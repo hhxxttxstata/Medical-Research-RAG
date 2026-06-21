@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 1: 工业级 RAG/Agent 差距全景图</title>
+<style>
+  /* Tufte-inspired typography */
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --text: #1a1a1a;
+    --bg: #faf9f7;
+    --accent: #2563eb;
+    --accent-light: #dbeafe;
+    --warm-gray: #f3f0eb;
+    --border: #e2ddd7;
+    --green: #059669;
+    --red: #dc2626;
+    --amber: #d97706;
+    --purple: #7c3aed;
+    --code-bg: #f1f0ee;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { font-size: 15px; }
+  body {
+    font-family: 'Noto Sans SC', 'Georgia', serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.75;
+    padding: 2rem;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  /* Article container */
+  .content { max-width: 720px; margin: 0 auto; }
+
+  h1 {
+    font-size: 2.4rem;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    margin-bottom: 0.5rem;
+    margin-top: 3rem;
+  }
+  .subtitle {
+    font-size: 1.1rem;
+    color: #666;
+    margin-bottom: 2rem;
+    font-weight: 300;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 1.5rem;
+  }
+
+  h2 {
+    font-size: 1.5rem;
+    font-weight: 500;
+    margin-top: 2.5rem;
+    margin-bottom: 1rem;
+    border-left: 4px solid var(--accent);
+    padding-left: 0.75rem;
+  }
+
+  h3 {
+    font-size: 1.15rem;
+    font-weight: 500;
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+    color: #2d2d2d;
+  }
+
+  p, li { font-size: 0.95rem; margin-bottom: 0.75rem; }
+
+  /* Side note (Tufte-style) */
+  .sidenote {
+    float: right;
+    clear: right;
+    margin-right: -200px;
+    width: 180px;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    color: #666;
+    border-left: 2px solid var(--border);
+    padding-left: 0.75rem;
+    margin-top: 0.25rem;
+    margin-bottom: 0.5rem;
+  }
+  @media (max-width: 1100px) {
+    .sidenote { float: none; margin-right: 0; width: auto; border-left: 2px solid var(--accent);
+      background: var(--accent-light); padding: 0.5rem 0.75rem; border-radius: 4px; margin-top: 0.5rem; margin-bottom: 0.75rem; }
+    body { padding: 1rem; }
+  }
+
+  /* Priority badges */
+  .badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    letter-spacing: 0.03em;
+    vertical-align: middle;
+    margin-right: 0.25rem;
+  }
+  .badge-p0 { background: #fee2e2; color: var(--red); }
+  .badge-p1 { background: #fef3c7; color: var(--amber); }
+  .badge-p2 { background: #dbeafe; color: var(--accent); }
+
+  /* Gap cards */
+  .gap-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    transition: box-shadow 0.15s;
+  }
+  .gap-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .gap-card h3 { margin-top: 0; font-size: 1rem; }
+  .gap-card .meta { font-size: 0.8rem; margin-bottom: 0.5rem; color: #888; }
+
+  /* Code */
+  code {
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 0.82rem;
+    background: var(--code-bg);
+    padding: 0.15rem 0.35rem;
+    border-radius: 3px;
+  }
+  pre code {
+    display: block;
+    padding: 0.75rem 1rem;
+    overflow-x: auto;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    border-radius: 6px;
+  }
+
+  /* Table */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+  }
+  th {
+    background: var(--warm-gray);
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 2px solid var(--border);
+    font-weight: 600;
+  }
+  td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  tr:hover td { background: #faf8f5; }
+
+  ul, ol { padding-left: 1.25rem; }
+  li { margin-bottom: 0.4rem; }
+
+  .highlight-box {
+    background: var(--accent-light);
+    border-left: 4px solid var(--accent);
+    padding: 1rem 1.25rem;
+    border-radius: 0 6px 6px 0;
+    margin: 1rem 0;
+  }
+  .highlight-box p { margin-bottom: 0; }
+
+  .reflection-box {
+    background: #f0fdf4;
+    border-left: 4px solid var(--green);
+    padding: 1rem 1.25rem;
+    border-radius: 0 6px 6px 0;
+    margin: 1rem 0;
+  }
+
+  .footer {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.85rem;
+    color: #888;
+    text-align: center;
+  }
+
+  /* Arrow diagram */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0;
+    margin: 1.5rem 0;
+    font-size: 0.85rem;
+  }
+  .pipeline-step {
+    background: var(--warm-gray);
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    text-align: center;
+    min-width: 90px;
+  }
+  .pipeline-arrow {
+    color: var(--accent);
+    font-size: 1.2rem;
+    padding: 0 0.35rem;
+  }
+</style>
+</head>
+<body>
+<div class="content">
+
+<h1>Lesson 1: 差距全景图</h1>
+<p class="subtitle">你的 RAG/Agent 系统离工业级还差多远？一张路线图讲清楚</p>
+
+<div class="highlight-box">
+  <strong>🎯 本课目标：</strong>建立工业级 RAG/Agent 系统的完整认知框架，找出当前项目与工业级的差距，制定可执行的升级路径。学完这课，你可以在面试中讲清楚"我的系统目前处于什么阶段，下一步怎么走"。
+</div>
+
+<h2>一、先看定位：你的系统属于什么阶段？</h2>
+
+<p>工业级系统能力分级（参考 <a href="https://martinfowler.com/bliki/ProductionReady.html">Fowler 生产就绪定义</a> + SEI 成熟度模型）：</p>
+
+<table>
+  <tr><th>等级</th><th>名称</th><th>特征</th><th style="width:80px">你当前</th></tr>
+  <tr><td>L0</td><td>可运行原型</td><td>能跑通一条路径，但健壮性差、无测试、无异常处理</td><td style="text-align:center;">—</td></tr>
+  <tr><td><strong>L1</strong></td><td><strong>功能完整</strong></td><td><strong>核心功能完整、有测试、有错误处理、结构清晰</strong></td><td style="background:#fef3c7;text-align:center;"><strong>✅ 你在这里</strong></td></tr>
+  <tr><td>L2</td><td>可部署</td><td>Docker 化、健康检查、优雅关停、配置管理</td><td style="text-align:center;">部分</td></tr>
+  <tr><td>L3</td><td>可运维</td><td>Metrics + Tracing + 告警、日志中心化、CI/CD</td><td style="text-align:center;">❌</td></tr>
+  <tr><td>L4</td><td>可观测</td><td>APM 分布式追踪、SLO 监控、A/B 测试、金丝雀发布</td><td style="text-align:center;">❌</td></tr>
+  <tr><td>L5</td><td>自适应</td><td>自愈、自动扩缩容、反馈闭环、模型在线学习</td><td style="text-align:center;">❌</td></tr>
+</table>
+
+<p class="sidenote">注意：L4-L5 通常只有大型团队才需要。对秋招项目，L2-L3 是合理的上限——超出太多面试官反而会怀疑深度。</p>
+
+<p>你的系统目前处于 <strong>L1 → L2 过渡期</strong>。核心功能齐全（RAG、Agent、诊断、记忆、评估），但基础工程化缺失。这不是你的问题——它反映了绝大多数学术/个人项目的真实状态。接下来我们要做的就是针对性地补上缺失的工程化拼图。</p>
+
+<h2>二、全景差距分析</h2>
+
+<p>以下七大维度，按优先级排序：</p>
+
+<h3>🔴 P0 — 缺失即不可用</h3>
+
+<div class="gap-card">
+  <h3>1. 可观测性体系 <span class="badge badge-p0">P0</span></h3>
+  <div class="meta">影响: 线上问题排查时间从分钟级变成小时级</div>
+  <p><strong>现状：</strong>只有 JSONL 文件日志（<code>logger.py</code>），无结构化指标、无链路追踪、无告警机制。</p>
+  <p><strong>工业级做法：</strong></p>
+  <ul>
+    <li><strong>Metrics</strong> — Prometheus + Grafana：请求量、延迟分位数 (p50/p95/p99)、错误率、检索召回率、Agent 步数分布</li>
+    <li><strong>Tracing</strong> — OpenTelemetry：每次查询从 HTTP 入口 → 意图分类 → 检索 → LLM 调用 → 回复，全链路追踪</li>
+    <li><strong>Structured Logging</strong> — 将当前 <code>print()</code> 日志替换为 <code>structlog</code> 或 <code>loguru</code>，JSON 格式、可查询</li>
+  </ul>
+  <p><strong>面试价值：</strong>"可观测性"是秋招高频考点。能讲清楚 Metrics/Tracing/Logging 三者的区别和实现，加分明显。</p>
+</div>
+
+<div class="gap-card">
+  <h3>2. 安全与认证 <span class="badge badge-p0">P0</span></h3>
+  <div class="meta">影响: 当前任何知道你 IP 的人都可以调用所有 API</div>
+  <p><strong>现状：</strong><code>allow_origins=["*"]</code>，无 API Key 认证、无速率限制、无输入校验。</p>
+  <p><strong>工业级做法：</strong></p>
+  <ul>
+    <li><strong>API Key 认证</strong> — FastAPI <code>Depends()</code> 或中间件，Bearer token 验证</li>
+    <li><strong>Rate Limiting</strong> — <code>slowapi</code> / 令牌桶算法：不同 endpoint 不同配额</li>
+    <li><strong>输入校验</strong> — Pydantic v2 严格模式 + prompt injection 检测（关键词/向量相似度）</li>
+    <li><strong>CORS 收紧</strong> — 允许特定域名而非 <code>*</code></li>
+  </ul>
+  <p><strong>面试价值：</strong>安全设计体现生产意识。"我的系统在生产前会补全认证和限流"——比"我不知道"好一百倍。</p>
+</div>
+
+<div class="gap-card">
+  <h3>3. CI/CD 流水线 <span class="badge badge-p0">P0</span></h3>
+  <div class="meta">影响: 每次改代码都需要手动测试→部署，容易遗漏</div>
+  <p><strong>现状：</strong>无 <code>.github/</code> 目录、无自动化流程。</p>
+  <p><strong>工业级做法：</strong></p>
+  <ul>
+    <li><strong>GitHub Actions</strong>：CI — 每次 push 跑 pytest + lint + type check</li>
+    <li><strong>Pre-commit hooks</strong>：black/ruff 格式化、mypy 静态检查</li>
+    <li><strong>Docker 构建</strong>：CI 中自动构建镜像 + 安全检查（trivy）</li>
+    <li><strong>CD 可选</strong>：push 到 main 自动部署到测试环境</li>
+  </ul>
+  <p><strong>面试价值：</strong>DevOps 流程是"全栈能力"的体现，也是面试常问项。</p>
+</div>
+
+<h3>🟡 P1 — 当前功能可升级</h3>
+
+<div class="gap-card">
+  <h3>4. Agent 生产化 <span class="badge badge-p1">P1</span></h3>
+  <div class="meta">影响: Agent 调用时间长、无流式反馈、无行为约束</div>
+  <p><strong>现状：</strong>ReAct 循环同步阻塞调用，无流式输出，无 Guardrails。工具调用在 ThreadPoolExecutor 中并行但整体仍阻塞请求。</p>
+  <p><strong>工业级做法：</strong></p>
+  <ul>
+    <li><strong>SSE 流式输出</strong> — 将 ReAct 的 Thought/Action/Observation 实时推送给前端展示，而非等全部完成后一次性返回</li>
+    <li><strong>异步 Agent 循环</strong> — <code>async/await</code> 改造，配合 FastAPI 的异步处理，避免阻塞事件循环</li>
+    <li><strong>Guardrails</strong> — 工具调用前的安全检查（输出是否含 PII？是否调用了危险 shell 命令？）</li>
+    <li><strong>Tool 注册表优化</strong> — 当前 <code>Tool</code> 基类设计好，但缺少 <code>parallel_safe</code>、<code>retry_policy</code>、<code>timeout</code> 等元数据</li>
+  </ul>
+  <p><strong>面试价值：</strong>Agent 是 2026 年面试绝对热点。从"功能实现"到"生产化"的思考深度，能让你在面试中脱颖而出。</p>
+</div>
+
+<div class="gap-card">
+  <h3>5. RAG 生产化 <span class="badge badge-p1">P1</span></h3>
+  <div class="meta">影响: 每次改数据需重建索引，无缓存，响应慢</div>
+  <p><strong>现状：</strong>知识库只初始化一次，新增文档需要手动 <code>--rebuild</code>。每次查询都走全量检索→LLM。</p>
+  <p><strong>工业级做法：</strong></p>
+  <ul>
+    <li><strong>增量索引</strong> — 监听目录变化（watchdog），新文件自动加载、分块、embedding、入库</li>
+    <li><strong>多级缓存</strong> — Embedding 缓存（相同 query 缓存向量）、检索结果缓存（LRU）、LLM 回答缓存（语义相似查重）</li>
+    <li><strong>高级 reranker</strong> — 当前用 LLM 做 reranker 太昂贵，改为 cross-encoder 模型（如 BAAI/bge-reranker-v2）</li>
+    <li><strong>知识库管理</strong> — 支持多集合、文档标签、版本管理</li>
+  </ul>
+  <p><strong>面试价值：</strong>RAG 是面试必考。能说出"我的系统做了 XX 优化来解决 YY 问题"比背八股好一百倍。</p>
+</div>
+
+<h3>🔵 P2 — 锦上添花</h3>
+
+<div class="gap-card">
+  <h3>6. 工程基础设施 <span class="badge badge-p2">P2</span></h3>
+  <div class="meta">影响: 开发体验差、代码质量难保障</div>
+  <p><strong>现状：</strong><code>requirements.txt</code> 传统模式、无 <code>pyproject.toml</code>、无 pre-commit、无配置管理。</p>
+  <p><strong>工业级做法：</strong></p>
+  <ul>
+    <li><strong>pyproject.toml</strong> — 统一管理依赖、工具配置（pytest、ruff、mypy）</li>
+    <li><strong>Pre-commit hooks</strong> — ruff lint + format、mypy type check、pytest smoke test</li>
+    <li><strong>配置中心化</strong> — 将 <code>.env</code> + 构造函数参数 统一为 Pydantic <code>BaseSettings</code></li>
+    <li><strong>日志规范</strong> — 统一日志格式、支持 JSON 输出、日志级别动态调整</li>
+  </ul>
+</div>
+
+<div class="gap-card">
+  <h3>7. 性能优化 <span class="badge badge-p2">P2</span></h3>
+  <div class="meta">影响: 大负载下响应时间会劣化</div>
+  <p><strong>现状：</strong>无连接池、无缓存、BM25 每次检索都重建索引。</p>
+  <p><strong>工业级做法：</strong></p>
+  <ul>
+    <li><strong>HTTP 连接池</strong> — <code>httpx.Client()</code> 重用而非每次新建</li>
+    <li><strong>Embedding 批量缓存</strong> — diskcache 缓存已计算的文档 embedding</li>
+    <li><strong>BM25 索引持久化</strong> — 当前在 <code>_ensure_bm25_index</code> 中从 <code>get_all_documents()</code> 懒构建，每次都重新分词。改为序列化到磁盘</li>
+    <li><strong>并发控制</strong> — 当前 ThreadPoolExecutor 固定 4 个 worker，可改为根据负载动态调节</li>
+  </ul>
+</div>
+
+<h2>三、工业级系统全景（给你的目标架构）</h2>
+
+<p>这是你最终应当能画出来的架构图——面试时的必杀技：</p>
+
+<pre><code>┌──────────────┐    ┌──────────────────────────────────────────────────────┐
+│   用户/前端    │───▶│               FastAPI Application                     │
+│ (Gradio/REST) │    │  ┌──────────┐  ┌────────────┐  ┌──────────────────┐  │
+└──────┬───────┘    │  │  Auth MW  │─▶│ Rate Limit │─▶│  Input Sanitizer  │  │
+       │            │  └──────────┘  └────────────┘  └────────┬─────────┘  │
+       │            │                                          │            │
+  ◀────┘            │  ┌───────────────────◀───────────────────┘            │
+       │            │  │                                                      │
+     ╔══╧══════════════╧═══════════════════════════════════════════════════╗
+     ║                      OpenTelemetry (Tracing)                         ║
+     ║  ┌──────┐ ┌──────┐ ┌──────┐ ┌────────┐ ┌────────┐ ┌──────────┐   ║
+     ║  │ 意图  │ │ 检索  │ │ Rerank│ │ 生成  │ │ 诊断  │ │ 日志    │   ║
+     ║  │分类器  │ │ 器   │ │ 器   │ │ 器   │ │ 模型  │ │ 系统    │   ║
+     ║  └──────┘ └──────┘ └──────┘ └────────┘ └────────┘ └──────────┘   ║
+     ╚══════════════════════════════════════════════════════════════════════╝
+       │            │                                                      │
+       │     ┌──────┴──────────────────────────────────┐                   │
+       │     │             基础设施层                     │                   │
+       │     │  ┌──────────┐ ┌────────┐ ┌───────────┐  │                   │
+       │     │  │ Prometh. │ │ Grafana│ │ 缓存层    │  │                   │
+       │     │  │ Metrics  │ │ 告警   │ │ Diskcache │  │                   │
+       │     │  └──────────┘ └────────┘ └───────────┘  │                   │
+       │     │  ┌──────────┐ ┌────────┐ ┌───────────┐  │                   │
+       │     │  │ ChromaDB │ │ BM25  │ │ LLM      │  │                   │
+       │     │  │ 向量库  │ │ 索引   │ │ Provider  │  │                   │
+       │     │  └──────────┘ └────────┘ └───────────┘  │                   │
+       │     └───────────────────────────────────────────┘                   │
+       │                                                                      │
+    ═══╪══════════════════════════════════════════════════════════════════   │
+       │  GitHub Actions CI/CD                       Docker Compose         │
+       │  ┌──────────┐ ┌──────────┐ ┌─────────┐     ┌─────┐ ┌──────┐      │
+       │  │  test    │ │  lint    │ │  build  │     │ Nginx│ │App   │      │
+       │  │ pytest   │ │ ruff/mypy│ │ docker  │     │反代  │ │容器  │      │
+       │  └──────────┘ └──────────┘ └─────────┘     └─────┘ └──────┘      │
+       └──────────────────────────────────────────────────────────────────────┘
+</code></pre>
+
+<p>这套架构让你在面试中展示：</p>
+<ul>
+  <li><strong>全栈能力</strong> — 从前端到后端、从模型到基础设施</li>
+  <li><strong>工程思维</strong> — 不是"跑通了就行"，而是考虑可观测性、安全、可靠性</li>
+  <li><strong>DevOps 意识</strong> — CI/CD、容器化、监控告警</li>
+  <li><strong>架构设计</strong> — 分层清晰的组件设计、关注点分离</li>
+</ul>
+
+<h2>四、优先级的思考逻辑</h2>
+
+<p>为什么 P0 是那三个？：</p>
+
+<table>
+  <tr><th>优先级</th><th>选它的原因</th><th>面试官会问吗？</th></tr>
+  <tr>
+    <td><span class="badge badge-p0">P0 可观测性</span></td>
+    <td>没有监控，出了问题你根本不知道。这是生产系统和玩具的分水岭。</td>
+    <td>✅ "你的系统怎么保障线上质量？"——必问</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-p0">P0 安全认证</span></td>
+    <td>FastAPI 默认裸奔，<code>*</code> CORS 意味着任何网站都能调你的 API。</td>
+    <td>✅ "你的系统有安全考虑吗？"——常问</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-p0">P0 CI/CD</span></td>
+    <td>没有自动化流程，改代码靠手测，协作靠信任。一个 commits 就能崩掉整个系统。</td>
+    <td>✅ "你们项目的 CI 怎么设计的？"—项目中高级问题</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-p1">P1 Agent 生产化</span></td>
+    <td>Agent 是核心亮点，但是同步模式。流式 + 异步是现在业界标配。</td>
+    <td>✅ "你的 Agent 推理过程用户等多久？"—常问</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-p2">P2 工程基建</span></td>
+    <td>开发体验改善、代码质量保障。不影响线上但影响团队效率。</td>
+    <td>❌ — 但如果你主动提，能显示工程视野</td>
+  </tr>
+</table>
+
+<div class="reflection-box">
+  <strong>💡 面试话术示例：</strong><br>
+  "我的项目目前处于功能完整阶段（L1），核心流程都已走通。但距离工业级部署还差几个关键环节：<strong>第一是可观测性</strong>——目前只有日志，我计划引入 Prometheus 指标和 OpenTelemetry 链路追踪；<strong>第二是安全认证</strong>——需要加上 API Key 和限流；<strong>第三是 CI/CD</strong>——实现自动化测试和构建。这些是我下一步的重点方向。"
+</div>
+
+<h2>五、回顾：你的系统的核心优势</h2>
+
+<p>在开始批评之前，先看看你做对了什么（面试中也要先讲优点）：</p>
+
+<ol>
+  <li><strong>架构清晰</strong> — 模块化设计合理（agent.py、rag_pipeline.py、retriever.py、memory.py 各司其职），比很多 starter template 好得多</li>
+  <li><strong>自实现 ReAct 循环</strong> — 不依赖 LangChain，能用面试语言解释清楚每个环节。这是很大的加分项</li>
+  <li><strong>三层记忆系统</strong> — 短期+工作+长期的分解展示了系统性思维，工业级 Agent 的标准架构</li>
+  <li><strong>完整的评估管线</strong> — 7 个评估文件、LLM-as-Judge、检索质量测试。大多数项目根本没有这个</li>
+  <li><strong>优雅降级</strong> — Function Calling → ReAct → 规则兜底的链路设计，LLM 不可用时系统不崩溃</li>
+  <li><strong>MCP 协议支持</strong> — 这是一个前沿方向，能体现你关注行业动态</li>
+  <li><strong>诊断模型集成</strong> — RAG + 诊断模型推理 + Agent 的融合架构</li>
+  <li><strong>中文+医学领域适配</strong> — 中文 Bigram 重叠、中英分词、e5 模型特定 prefix</li>
+</ol>
+
+<div class="highlight-box">
+  <strong>🔑 核心信息：</strong><br>
+  你的系统在"功能"层面已经达到甚至超过了很多秋招项目。缺失的是"工程化"——这是认知层面的差距，不是能力层面的差距。一旦你意识到需要补什么，你完全有能力补上。
+</div>
+
+<h2>六、下一步</h2>
+
+<p>后续课程将在本工作目录中进行实操：</p>
+
+<ol>
+  <li><strong>Lesson 2</strong> — 给系统装上仪表盘：Prometheus + Grafana + OpenTelemetry</li>
+  <li><strong>Lesson 3</strong> — 安全加固：API Key + Rate Limiting + 输入过滤</li>
+  <li><strong>Lesson 4</strong> — CI/CD 流水线：GitHub Actions + Pre-commit Hooks</li>
+  <li><strong>Lesson 5</strong> — Agent 流式 + 异步 + Guardrails</li>
+  <li><strong>Lesson 6</strong> — RAG 增量索引 + 多级缓存 + 高级 Reranker</li>
+  <li><strong>Lesson 7</strong> — 工程基础设施：pyproject.toml + 配置中心化 + Docker 生产化</li>
+</ol>
+
+<p>📖 <strong>阅读后任务：</strong></p>
+<ul>
+  <li>回顾你的 <code>app.py</code> 和 <code>src/</code> 目录，对照这 7 个维度，你还能发现哪些上面没列出的差距？</li>
+  <li>思考：如果有人问你的系统 "production ready 吗？"，你会怎么回答？</li>
+  <li>在笔记文件中记录你的想法</li>
+</ul>
+
+<p>🤖 <strong>有问题？随时问我</strong> — 接下来的每一课都是实操，如果你对某个方向特别感兴趣，告诉我，我可以调整顺序先讲你想要的。</p>
+
+<h2>推荐阅读</h2>
+<ul>
+  <li><a href="https://www.prometheus.io/docs/introduction/overview/">Prometheus 官方文档</a> — 业界标准的指标采集方案</li>
+  <li><a href="https://opentelemetry.io/docs/">OpenTelemetry 文档</a> — 统一的遥测数据标准</li>
+  <li><a href="https://docs.github.com/en/actions">GitHub Actions 文档</a> — CI/CD 配置</li>
+  <li><a href="https://martinfowler.com/bliki/ProductionReady.html">ProductionReady (Martin Fowler)</a> — 什么是生产就绪</li>
+  <li><a href="https://arxiv.org/abs/2210.03629">ReAct: Synergizing Reasoning and Acting in Language Models</a> — ReAct 原论文</li>
+</ul>
+
+
+<div class="footer">
+  Lesson 1 of 7 · 肺栓塞 RAG/Agent 系统工业级升级系列 · 2026-06-16<br>
+  如有疑问，随时向你的 AI 老师提问 🤖
+</div>
+
+</div>
+</body>
+</html>

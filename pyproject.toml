@@ -1,0 +1,47 @@
+[project]
+name = "pe-rag-system"
+version = "2.0.0"
+description = "Pulmonary Embolism RAG + Agent + Diagnosis System"
+requires-python = ">=3.10"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+ignore = ["E501", "B008", "B904", "E741", "SIM105", "SIM115", "UP007", "UP038"]
+
+[tool.ruff.lint.per-file-ignores]
+"gradio_app.py" = ["SIM103", "B007"]
+"teacher/*" = ["B905", "SIM108", "SIM115", "N806", "F841", "E402", "UP038"]
+"eval/*" = ["B905", "B007", "F841", "UP038"]
+"tests/*" = ["F841"]
+"src/generator.py" = ["E402", "F841"]
+"src/document_processor.py" = ["SIM102", "SIM108"]
+"src/diagnosis.py" = ["N806", "N812", "F401"]
+"src/memory.py" = ["SIM115", "F841"]
+"src/agent.py" = ["B905"]
+"src/rag_pipeline.py" = ["SIM115"]
+"src/mcp_server.py" = ["E402"]
+"src/retriever.py" = ["B905"]
+"src/text_splitter.py" = ["SIM108"]
+"src/tools/report_generator.py" = ["SIM102"]
+"src/monitoring/tracing.py" = ["SIM102"]
+"teacher/resnet25d_attention.py" = ["N812", "N801", "UP038"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+warn_unused_ignores = true
+disable_error_code = ["no-untyped-call", "no-untyped-def", "var-annotated", "union-attr", "arg-type", "return-value", "call-arg", "operator", "attr-defined", "index", "call-overload", "override", "misc", "assignment", "unused-ignore"]
+ignore_missing_imports = true
+exclude = [
+    "tests/",
+    "teacher/",
+    "eval/",
+    "build/",
+]

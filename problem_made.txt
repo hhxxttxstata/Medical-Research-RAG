@@ -1,0 +1,152 @@
+================================================================================
+问题 #1: Gradio 前端发送问题时报错
+日期: 2026-06-05
+================================================================================
+
+【问题现象】
+在前端页面输入问题并发送时，Gradio 控制台报错：
+gradio.exceptions.Error: "Data incompatible with messages format. Each message
+should be a dictionary with 'role' and 'content' keys or a ChatMessage object."
+
+【根因分析】
+安装的 Gradio 版本为 6.16.0，该版本已强制使用新的 messages 格式
+（[{"role": "user", "content": "..."}, ...]），但代码中 chat() 函数返回的是
+旧版 tuple 格式（[(user_msg, bot_msg), ...]），导致 Chatbot 组件
+postprocess 时格式校验失败。
+
+【解决步骤】
+1. 确认 Gradio 版本：python -c "import gradio; print(gradio.__version__)" →
+   6.16.0
+2. 修改 gradio_app.py 中 chat() 函数的返回值格式：
+   - 旧：history.append((question.strip(), "\n".join(parts)))
+   - 新：history.append({"role": "user", "content": question.strip()})
+         history.append({"role": "assistant", "content": "\n".join(parts)})
+3. 注意：Gradio 6.x 中 gr.Chatbot 的 type 参数已被移除（无需设置 type="messages"）
+4. 重启应用后前端口正常响应
+
+【验证结果】
+- API 端口 17500 正常返回问答结果
+- Gradio 端口 7860 正常监听
+- curl 请求 Gradio 页面返回正常 HTML（应用已正常加载）
+================================================================================
+优化 #1: 混合回答模式 — 允许LLM用自身知识补充知识库不足
+日期: 2026-06-05
+================================================================================
+
+【优化背景】
+用户反馈模型回答泛化性太差，超出知识库范围的问题无法回答。
+例如，要求提供一个"从零搭建肺栓塞诊断模型的研究报告"，系统会拒答或只能生硬拼接有限信息。
+
+【根因分析】
+原有 RAG 系统存在三层限制：
+1. generator.py → build_rag_prompt()：Prompt 核心原则要求"严格基于参考文档""绝不编造"，
+   且不相关时追加"拒答规则"强制不回答
+2. generator.py → generate()：compute_relevance() 判断不相关后直接返回拒答模板，
+   根本不给 LLM 调用的机会
+3. report_generator.py → _llm_*()：报告生成的 prompt 也限定"根据以下资料内容"，
+   不允许 LLM 用自己的知识补充
+
+【修改的文件及变更】
+
+1. src/generator.py
+   - build_rag_prompt()：重写 Prompt 策略
+     * 移除"拒答规则"
+     * 移除"严格基于参考文档，绝不编造"
+     * 新增"自身知识补充规则"——允许 LLM 用【自身知识】标注补充内容
+     * 不相关时提示"请主要依靠自身知识回答"
+   - generate()：移除硬拒答逻辑
+     * 不再根据 relevance.is_relevant 提前返回拒答
+     * 无论相关与否都调用 LLM，由 Prompt 中的规则指导回答策略
+   - _call_openai()：system prompt 改为"混合回答"定位
+     * 增加 max_tokens 默认值到 4096
+
+2. src/rag_pipeline.py
+   - query()：移除 is_refusal 硬拒答标记
+     * 相关性判断仅用于 Prompt 策略选择，不再触发拒答
+     * 日志提示改为"混合回答模式"
+
+3. src/tools/report_generator.py
+   - _llm_deployment() / _llm_troubleshoot()：prompt 增加"允许用自身知识补充"
+     * 内容上限从 4000 提升到 6000 tokens
+     * 各章节说明从"没有则写'资料中未说明'"改为"可根据专业知识补充"
+
+4. app.py
+   - 日志文案更新反映混合模式
+
+【验证结果】
+测试1 — 知识库有相关内容（肺栓塞定义+CT表现）：
+  ✅ 正确引用知识库[1]，同时用【自身知识】补充了CTPA典型征象
+  ✅ 结论完整、专业
+
+测试2 — Agent 模式生成"从零搭建肺栓塞诊断模型技术路线"报告：
+  ✅ 生成了完整的部署报告（6页结构）
+  ✅ 包含了数据预处理、模型架构(Res2Net+ASPP)、训练策略、评估方法
+  ✅ 引用了知识库中的文献且补充了自身知识（学习率、优化器、GPU配置等）
+
+测试3 — 知识库覆盖不全的问题（损失函数对比）：
+  ✅ 引用了知识库中提到的Dice系数，同时完整介绍了交叉熵、Dice、Focal损失
+  ✅ 详细对比了各自的优缺点和适用场景
+  ✅ 明确标注了【自身知识】部分，透明度高
+
+【当前状态】
+- API 服务运行在 http://127.0.0.1:17500
+- Gradio 前端运行在 http://127.0.0.1:7860
+- 所有服务正常运行，回答质量显著提升
+================================================================================
+集成 #1: 肺栓塞诊断模型集成（ResNet25d + Gated Attention MIL）
+日期: 2026-06-05
+================================================================================
+
+【背景】
+用户训练了一个基于 ResNet25d + Gated Attention MIL 的 CTPA 肺栓塞诊断模型
+（测试集 AUC=0.98），需要将其集成到 RAG 系统中，新增 RESTful API 端点和
+Agent 工具。
+
+【新增的文件】
+1. src/diagnosis.py（重写）— 核心推理模块
+   - 模型架构: ResNet25dAttention（2.5D ResNet-18 + Gated Attention MIL）
+   - 输入: 9通道（3窗宽窗位 × 3相邻切片），空间 256×256
+   - 输出: bag_logit → sigmoid → PE概率，以及 attention_weights
+   - 预处理: NIfTI读取 → HU裁剪[-1000,700] → Resize(256,256) →
+     胸部切片过滤 → 2.5D滑窗（stride=2, depth=3）→ 多窗归一化
+   - 三个窗: 肺窗(-1000,400) / 纵隔窗(-160,240) / CTA血管窗(-100,700)
+   - 模型加载: 兼容 checkpoint（epoch/model_state_dict/optimizer_state_dict）
+
+2. src/tools/diagnosis_tool.py（新建）— Agent 工具
+   - tool_name: diagnose_pulmonary_embolism
+   - 输入: NIfTI 文件路径
+   - 输出: 概率分数 + 风险等级 + 格式化诊断报告
+   - 自动初始化模型（PE_MODEL_PATH 环境变量）
+
+【修改的文件】
+1. src/agent.py
+   - IntentAnalyzer 新增 DIAGNOSIS_PATTERNS（肺栓塞诊断相关关键词）
+   - 新增 pe_diagnosis 意图类型
+   - _register_default_tools() 注册 DiagnosisTool
+   - process() 新增 _handle_diagnosis() 路由
+
+2. src/tools/__init__.py — 导出 DiagnosisTool
+
+3. app.py
+   - 新增 POST /diagnosis/predict — 上传NIfTI影像进行诊断
+   - 新增 GET /diagnosis/model — 查看诊断模型状态
+   - 启动时自动加载模型（PE_MODEL_PATH 环境变量）
+   - _sync_agent_mode() 支持诊断工具的结果包装
+
+4. requirements.txt — 添加 torch, nibabel, scipy 依赖
+
+【已删除的临时文件】
+- resnet25d_attention.py（模型定义已内联到 diagnosis.py）
+- train_attention.py（训练脚本，推理不需要）
+- config_attention.py（配置已内联到 diagnosis.py 的 MODEL_CONFIG）
+
+【验证结果】
+- ✅ 模型加载: best.pth（131个权重），9通道输入，0.16s 加载完成
+- ✅ /diagnosis/model: loaded=true, path=models/best.pth
+- ✅ /chat 诊断意图路由正常（tool=diagnose_pulmonary_embolism）
+
+【使用说明】
+- 设置环境变量 PE_MODEL_PATH=models/best.pth 指定模型路径
+- POST /diagnosis/predict 上传 .nii.gz 文件进行诊断
+- 通过聊天输入"帮我诊断一下这个ctpa影像"触发 Agent 诊断工具
+

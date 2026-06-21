@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reference: 工业级 RAG/Agent 系统速查表</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Noto Sans SC', sans-serif;
+    color: #1a1a1a;
+    background: #faf9f7;
+    line-height: 1.6;
+    padding: 2rem;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 1.8rem; font-weight: 500; border-bottom: 2px solid #2563eb;
+       padding-bottom: 0.5rem; margin-bottom: 1.5rem; }
+  h2 { font-size: 1.2rem; font-weight: 500; margin-top: 1.5rem; margin-bottom: 0.75rem;
+       background: #f3f0eb; padding: 0.4rem 0.75rem; border-radius: 4px; }
+  h3 { font-size: 1rem; font-weight: 500; margin-top: 1rem; margin-bottom: 0.5rem; }
+  p { font-size: 0.85rem; margin-bottom: 0.5rem; }
+  code { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem;
+         background: #f1f0ee; padding: 0.1rem 0.3rem; border-radius: 2px; }
+  table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: 0.82rem; }
+  th { background: #e2ddd7; text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid #ccc; }
+  td { padding: 0.35rem 0.5rem; border-bottom: 1px solid #e2ddd7; }
+  .col-priority { width: 55px; font-weight: 600; font-size: 0.75rem; }
+  .p0 { color: #dc2626; } .p1 { color: #d97706; } .p2 { color: #2563eb; }
+  .section { display: flex; gap: 1rem; flex-wrap: wrap; margin: 0.5rem 0; }
+  .card { background: white; border: 1px solid #e2ddd7; border-radius: 6px;
+          padding: 0.75rem; flex: 1 1 280px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .card h3 { margin-top: 0; font-size: 0.9rem; }
+  .card ul { font-size: 0.8rem; padding-left: 1rem; }
+  .card li { margin-bottom: 0.2rem; }
+  @media print { body { padding: 0; } .card { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<h1>🏭 工业级 RAG/Agent 速查表</h1>
+
+<h2>架构分级</h2>
+<table>
+  <tr><th>级别</th><th>名称</th><th>关键特征</th></tr>
+  <tr><td>L0</td><td>可运行原型</td><td>核心路径可走通，无测试、无异常处理</td></tr>
+  <tr><td>L1</td><td>功能完整</td><td>核心功能完整，有测试、有错误处理、结构清晰</td></tr>
+  <tr><td>L2</td><td>可部署</td><td>Docker + 健康检查 + 配置管理 + 优雅关停</td></tr>
+  <tr><td>L3</td><td>可运维</td><td>Metrics + Tracing + 告警 + 日志中心化 + CI/CD</td></tr>
+  <tr><td>L4</td><td>可观测</td><td>APM + SLO + A/B 测试 + 金丝雀发布</td></tr>
+  <tr><td>L5</td><td>自适应</td><td>自愈 + 自动扩缩容 + 反馈闭环</td></tr>
+</table>
+
+<h2>差距维度速查</h2>
+
+<div class="section">
+  <div class="card">
+    <h3>🔴 P0 可观测性</h3>
+    <ul>
+      <li><strong>Metrics：</strong>Prometheus + Grafana</li>
+      <li>请求量、p50/p95/p99、错误率</li>
+      <li>检索召回率、Agent 步数分布</li>
+      <li><strong>Tracing：</strong>OpenTelemetry</li>
+      <li>HTTP → 分类 → 检索 → LLM → 回复</li>
+      <li><strong>Logging：</strong>structlog / loguru</li>
+      <li>JSON 格式、可查询、有 trace_id</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>🔴 P0 安全与认证</h3>
+    <ul>
+      <li>API Key 认证（Bearer Token）</li>
+      <li>Rate Limiting（slowapi / 令牌桶）</li>
+      <li>Pydantic v2 严格输入校验</li>
+      <li>Prompt Injection 检测</li>
+      <li>CORS 白名单（非 *）</li>
+      <li>敏感信息脱敏（API Key）</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>🔴 P0 CI/CD</h3>
+    <ul>
+      <li>GitHub Actions：push → test → lint → build</li>
+      <li>Pre-commit hooks：ruff + mypy</li>
+      <li>Docker 构建 + trivy 安全扫描</li>
+      <li>自动部署（可选）</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>🟡 P1 Agent 生产化</h3>
+    <ul>
+      <li>SSE 流式输出 Thought/Action/Obs</li>
+      <li>异步 async/await Agent 循环</li>
+      <li>Guardrails（输出检查、PII 过滤）</li>
+      <li>Tool 元数据：parallel_safe, timeout, retry</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>🟡 P1 RAG 生产化</h3>
+    <ul>
+      <li>增量索引（watchdog 监听文件变更）</li>
+      <li>多级缓存：embedding / 检索 / LLM</li>
+      <li>Cross-encoder reranker（bge-reranker-v2）</li>
+      <li>多集合、文档标签、版本管理</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>🔵 P2 工程基建</h3>
+    <ul>
+      <li>pyproject.toml 统一配置</li>
+      <li>Pydantic BaseSettings 配置中心</li>
+      <li>httpx 连接池</li>
+      <li>BM25 索引序列化到磁盘</li>
+      <li>Docker 多阶段构建</li>
+    </ul>
+  </div>
+</div>
+
+<h2>工具推荐</h2>
+<table>
+  <tr><th>类别</th><th>推荐工具</th><th>说明</th></tr>
+  <tr><td>Metrics</td><td><code>prometheus_client</code> + Grafana</td><td>Python 原生集成 Prometheus</td></tr>
+  <tr><td>Tracing</td><td><code>opentelemetry-api</code> + <code>opentelemetry-sdk</code></td><td>FastAPI 有现成的中间件</td></tr>
+  <tr><td>Logging</td><td><code>structlog</code> / <code>loguru</code></td><td>结构化日志</td></tr>
+  <tr><td>Rate Limit</td><td><code>slowapi</code></td><td>FastAPI 专用限流中间件</td></tr>
+  <tr><td>CI/CD</td><td>GitHub Actions</td><td>生态最全</td></tr>
+  <tr><td>Pre-commit</td><td><code>pre-commit</code> + ruff + mypy</td><td>Python 标准工具链</td></tr>
+  <tr><td>Reranker</td><td><code>BAAI/bge-reranker-v2-m3</code></td><td>高性能 cross-encoder</td></tr>
+  <tr><td>缓存</td><td><code>diskcache</code> / <code>cachetools</code></td><td>磁盘/LRU 缓存</td></tr>
+</table>
+
+<h2>Agent 架构速查</h2>
+<table>
+  <tr><th>组件</th><th>职责</th><th>你的当前实现</th></tr>
+  <tr><td>意图分类器</td><td>LLM + 规则双路径分类</td><td><code>LLMIntentClassifier</code> + <code>IntentAnalyzer</code></td></tr>
+  <tr><td>Function Calling</td><td>原生 OpenAI tools 参数调用工具</td><td><code>FunctionCallingLoop</code></td></tr>
+  <tr><td>ReAct 降级</td><td>文本协议 ReAct（无 FC 时）</td><td><code>ReActLoop</code></td></tr>
+  <tr><td>工具注册表</td><td>统一 Tool 基类</td><td><code>tools/base.py</code></td></tr>
+  <tr><td>短期记忆</td><td>deque 缓存 session 对话</td><td><code>SessionMemory</code></td></tr>
+  <tr><td>工作记忆</td><td>任务进度追踪（15min TTL）</td><td><code>TaskMemory</code></td></tr>
+  <tr><td>长期记忆</td><td>ChromaDB 持久化偏好</td><td><code>PreferenceMemory</code></td></tr>
+</table>
+
+<h2>面试要点</h2>
+<ul>
+  <li>🎯 先讲优点（自实现 ReAct、三层记忆、评估管线、优雅降级）</li>
+  <li>📊 再讲差距（可观测性、安全、CI/CD、流式输出）</li>
+  <li>💡 附改进方向（按 P0/P1/P2 优先级排序）</li>
+  <li>✅ 强调从 L1 → L2/L3 的具体路径，而非停留在"意识到了问题"</li>
+  <li>🚫 避免：过度批评自己的代码、贬低已有工作、承诺不切实际的时间线</li>
+</ul>
+
+<div style="margin-top:1.5rem; padding-top:0.75rem; border-top:1px solid #e2ddd7; font-size:0.78rem; color:#888; text-align:center;">
+  Reference: 工业级 RAG/Agent 速查表 · 2026-06
+</div>
+</body>
+</html>

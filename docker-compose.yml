@@ -1,0 +1,81 @@
+# ═══════════════════════════════════════════════════════
+#  docker-compose.yml — RAG 知识库问答系统完整部署
+# ═══════════════════════════════════════════════════════
+
+name: rag-system
+
+# 使用方式:
+#   首次启动:   docker compose up -d
+#   重建镜像:   docker compose build --no-cache
+#   查看日志:   docker compose logs -f
+#   重启后端:   docker compose restart backend
+#   停止:       docker compose down -v
+#
+# 访问地址:
+#   后端 API:   http://localhost:8000  (Swagger 文档: /docs)
+#   前端页面:   http://localhost:7860
+#
+# 必须配置:
+#   复制 .env 文件并填入 API Key（至少配置一种 LLM）:
+#     - DeepSeek（推荐，国内可用）
+#     - SiliconFlow（推荐，国内可用）
+#     - OpenAI（需海外网络）
+#
+#   PE 诊断模型（可选）:
+#     将 best.pth 放入 ./models/，容器通过 volume 挂载读取
+# ═══════════════════════════════════════════════════════
+
+services:
+
+  # ── 后端：FastAPI 服务（RAG + Agent + 诊断推理） ──
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: rag-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # 模型权重（只读，避免容器内意外修改）
+      - ./models:/app/models:ro
+      # 持久化数据（文档库 + 向量数据库 + 日志）
+      - ./data:/app/data
+      - ./chroma_db:/app/chroma_db
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - API_PORT=8000
+      - API_HOST=0.0.0.0
+    # Windows 上 GPU 不可用，已切换为 CPU-only 的 Python 镜像
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/health', timeout=5); assert r.status==200"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s   # 模型加载 + 知识库初始化可能需要较长时间
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  # ── 前端：Gradio 页面（纯展示层，极轻量） ──────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: rag-frontend
+    ports:
+      - "7860:7860"
+    environment:
+      # 指向同 docker-compose 网络内的 backend 服务
+      - API_BASE_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+networks:
+  rag-network:
+    driver: bridge
