@@ -1,0 +1,26 @@
+name: Trivy Security Scan
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -t pe-rag-backend -f Dockerfile.backend .
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: pe-rag-backend
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: 1
+          severity: CRITICAL,HIGH
+      - name: Upload SARIF results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif

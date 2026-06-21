@@ -1,0 +1,11 @@
+# 开发/测试依赖
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# 代码质量
+ruff>=0.11.0
+mypy>=1.15.0
+pre-commit>=4.0.0
+
+# mypy 类型存根
+types-requests>=2.32.0

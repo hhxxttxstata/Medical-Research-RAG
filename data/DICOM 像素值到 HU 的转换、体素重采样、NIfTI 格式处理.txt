@@ -1,0 +1,35 @@
+1、从DICOM到HU——有物理意义的数值
+AI模型理解CT影像的第一步，是理解图像的“像素”数值代表什么物理意义。
+
+CT扫描机生成的DICOM文件中的原始像素值（
+S
+V
+SV）并非直接是HU值，需要根据DICOM头文件中的信息进行转换。转换公式是一个标准的线性变换：
+HU
+=
+Rescale Slope
+×
+S
+V
++
+Rescale Intercept
+HU=Rescale Slope×SV+Rescale Intercept
+
+其中，Rescale Slope (0028,1053) 和 Rescale Intercept (0028,1052) 是关键的DICOM标签。对于典型的CT图像，这两个值通常为1和-1024。完成该线性变换后，有临床物理意义的HU值才能直接用于模型的分析与训练。
+2、体素重采样——空间标准化
+不同设备扫描的CT图像可能具有不同的体素尺寸（例如0.5×0.5×1.25mm³），这会导致模型的感受野和特征尺度不一致。因此，体素重采样（Resampling） 作为对原始数据进行空间标准化的关键预处理步骤，至关重要。
+
+该过程涉及在三维网格上估算新体素位置的数值，而估算方法的选择直接影响图像质量：
+
+三线性插值（Trilinear）：速度较快，图像过渡平滑，但在图像锐利度方面可能有损失。在数据量大、精度要求不高的场景下可作为首选。
+
+三三次样条插值（Tricubic Spline）：在误差和计算速度之间取得了较好的平衡，适合大多数需要高精度的应用。
+
+最近邻插值（Nearest Neighbor）：速度极快，但可能产生锯齿状伪影。
+
+窗sinc插值（Windowed Sinc）：精度最高，但计算量也最大。
+
+3、NIfTI格式处理——AI的“通用语”
+NIfTI（Neuroimaging Informatics Technology Initiative）格式已成为神经影像和医学影像AI领域的“通用语”。它的核心优势在于将图像数据与空间信息（如体素间物理距离） 结合存储在一个.nii或.nii.gz文件中。
+
+在Python生态中，NiBabel库是处理该格式的最重要工具，可以通过 nibabel.load() 快速读取NIfTI文件，获取仿射矩阵，并将图像数据直接转化为NumPy数组供深度学习模型调用。

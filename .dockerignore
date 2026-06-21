@@ -1,0 +1,46 @@
+# ─── 构建上下文绝不包含的内容 ───
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.yml
+Dockerfile.backend
+Dockerfile.frontend
+
+# 运行时数据（volume 挂载，不进入镜像）
+logs/
+chroma_db/
+chroma_db_eval/
+data/diagnosis_uploads/
+
+# 评估与报告
+evaluation_report.json
+
+# 训练代码（非部署相关）
+teacher/
+
+# 训练/模型权重（体积大，生产用 volume 挂载）
+models/*.pth
+models/*.pt
+models/*.onnx
+
+# API 密钥（运行时通过 docker-compose env_file 注入）
+.env
