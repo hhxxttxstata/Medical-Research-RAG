@@ -41,7 +41,9 @@ class RAGPipeline:
         chunk_max_chars: int = 500,
         retriever_mode: str = "hybrid",
         enable_rewrite: bool = True,
-        enable_reranker: bool = False,  # 默认关闭 reranker，减少耗时和幻觉风险
+        enable_reranker: bool = False,
+        reranker=None,  # CrossEncoderReranker 实例
+        cache_manager=None,  # CacheManager 实例
     ):
         self.data_dir = os.path.abspath(data_dir)
         self.persist_dir = os.path.abspath(persist_dir)
@@ -49,6 +51,8 @@ class RAGPipeline:
         self.chunk_min_chars = chunk_min_chars
         self.chunk_max_chars = chunk_max_chars
         self.retriever_mode = retriever_mode
+        self._reranker = reranker
+        self._cache = cache_manager
 
         # 根据 chunk size 确定集合名称
         collection_name = f"rag_docs_c{chunk_min_chars}_{chunk_max_chars}"
@@ -60,7 +64,7 @@ class RAGPipeline:
         self.generator = create_generator()
         self.logger = get_logger()
 
-        # 根据 mode 选择检索器：hybrid（默认）或 vector（纯向量）
+        # 根据 mode 选择检索器
         if retriever_mode == "hybrid":
             self.retriever = HybridRetriever(
                 vector_store=self.vector_store,
@@ -69,6 +73,7 @@ class RAGPipeline:
                 generator=self.generator,
                 enable_rewrite=enable_rewrite,
                 enable_reranker=enable_reranker,
+                reranker=reranker,
             )
         else:
             self.retriever = Retriever(
@@ -173,7 +178,13 @@ class RAGPipeline:
 
     def query(self, question: str, top_k: int | None = None) -> dict[str, Any]:
         """
-        执行完整的 RAG 查询
+        执行完整的 RAG 查询（带多级缓存）
+
+        缓存流程:
+          1. AnswerCache 精确+语义匹配 → 命中直接返回
+          2. RetrievalCache 精确匹配 → 命中跳过检索
+          3. 检索 + Cross-encoder/LLM Reranker
+          4. LLM 生成 → AnswerCache.set
 
         返回:
             {
@@ -185,6 +196,7 @@ class RAGPipeline:
                 "is_refusal": bool,
                 "relevance": {...},
                 "citation_validation": {...},
+                "cache_hit": str,   # "answer" | "retrieval" | "none"
             }
         """
         start_time = time.time()
@@ -192,6 +204,20 @@ class RAGPipeline:
         error = None
         is_refusal = False
         retrieved_chunks: list[dict[str, Any]] = []
+        cache_hit = "none"
+
+        # ── 1. Answer Cache ──
+        if self._cache:
+            try:
+                cached = self._cache.answer.get(question)
+                if cached:
+                    elapsed = time.time() - start_time
+                    cached["cache_hit"] = "answer"
+                    cached["elapsed"] = round(elapsed, 2)
+                    print("  ⚡ 回答缓存命中 (annswer)\n")
+                    return cached
+            except Exception:
+                pass
 
         # ── 追踪 span ──
         tracer = get_tracer()
@@ -204,12 +230,24 @@ class RAGPipeline:
         print(f"{'=' * 60}\n")
 
         try:
-            # 1. 检索
-            print(f"📡 步骤 1/2: 检索相关文档 (top_k={k})...")
-            with tracer.start_as_current_span("pipeline.retrieval") as span:
-                retrieved_chunks = self.retriever.retrieve(question, top_k=k)
-                span.set_attribute("chunk_count", len(retrieved_chunks))
-            print(f"  ✅ 检索到 {len(retrieved_chunks)} 个相关片段\n")
+            # ── 2. Retrieval Cache ──
+            if self._cache:
+                retrieved_chunks = self._cache.retrieval.get(question, k)
+                if retrieved_chunks:
+                    cache_hit = "retrieval"
+                    print(f"  ⚡ 检索缓存命中 ({len(retrieved_chunks)} chunks)\n")
+
+            if not retrieved_chunks:
+                # 1. 检索
+                print(f"📡 步骤 1/2: 检索相关文档 (top_k={k})...")
+                with tracer.start_as_current_span("pipeline.retrieval") as span:
+                    retrieved_chunks = self.retriever.retrieve(question, top_k=k)
+                    span.set_attribute("chunk_count", len(retrieved_chunks))
+                print(f"  ✅ 检索到 {len(retrieved_chunks)} 个相关片段\n")
+
+                # 写回缓存
+                if self._cache and retrieved_chunks:
+                    self._cache.retrieval.set(question, k, retrieved_chunks)
 
             # 1.2 Small-to-Big 展开：将 small chunk 替换为对应的 parent chunk
             expanded = []
@@ -318,6 +356,7 @@ class RAGPipeline:
             "is_refusal": is_refusal,
             "relevance": relevance,
             "citation_validation": citation_result,
+            "cache_hit": cache_hit,
         }
 
     def print_result(self, result: dict[str, Any]):

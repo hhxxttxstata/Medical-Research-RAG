@@ -40,3 +40,7 @@ structlog>=24.2.0
 
 # 安全防护（速率限制）
 slowapi>=0.1.9
+
+# 文件监听 + 缓存
+watchdog>=6.0.0
+redis>=5.0.0
