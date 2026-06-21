@@ -41,8 +41,14 @@ from slowapi.util import get_remote_address
 
 from src.agent import Agent
 from src.auth import verify_admin_api_key, verify_api_key
+
+# ── 缓存 ────────────────────────────────────────────
+from src.cache import CacheManager, RedisClient
 from src.diagnosis import CTPADiagnosisModel, create_diagnosis_model
 from src.document_loader import load_document
+
+# ── 知识库管理 ──────────────────────────────────────
+from src.knowledge_base import KnowledgeBase
 from src.logger import get_logger
 from src.memory import MemoryManager
 
@@ -54,7 +60,11 @@ from src.monitoring.metrics import (
 from src.monitoring.tracing import init_tracing
 from src.prompt_injection import detect_injection
 from src.rag_pipeline import RAGPipeline
+
+# ── Reranker ────────────────────────────────────────
+from src.reranker import CrossEncoderReranker
 from src.text_splitter import split_document
+from src.watcher import DocumentWatcher
 
 # ── 配置 ──────────────────────────────────────────────
 
@@ -83,6 +93,9 @@ pipeline: RAGPipeline | None = None
 agent: Agent | None = None
 memory_manager: MemoryManager | None = None
 diagnosis_model: CTPADiagnosisModel | None = None
+cache_manager = None  # CacheManager 实例
+reranker = None  # CrossEncoderReranker 实例
+watcher = None  # DocumentWatcher 实例
 
 # 诊断上传临时目录
 _DIAGNOSIS_UPLOAD_DIR = os.path.abspath("data/diagnosis_uploads")
@@ -185,8 +198,8 @@ _MCP_MOUNT_PATH: str = os.getenv("MCP_MOUNT_PATH", "/mcp")
 
 @app.on_event("startup")
 async def startup():
-    """应用启动时初始化 RAG 管道"""
-    global pipeline, agent, memory_manager
+    """应用启动时初始化 RAG 管道 + 缓存 + Reranker + 监听器"""
+    global pipeline, agent, memory_manager, cache_manager, reranker, watcher
 
     # 初始化可观测性
     init_tracing(service_name="pe-rag-system-api")
@@ -201,7 +214,27 @@ async def startup():
     os.makedirs(settings.persist_dir, exist_ok=True)
     os.makedirs(settings.log_dir, exist_ok=True)
 
-    # 初始化管道
+    # ── 初始化 Cross-encoder Reranker ──
+    print("\n📊 初始化 Cross-encoder Reranker...")
+    reranker = CrossEncoderReranker()
+    reranker._load_model()
+
+    # ── 初始化缓存 ──
+    print("\n💾 初始化缓存系统...")
+    RedisClient.get_client()  # 尝试连接 Redis（失败则降级内存）
+
+    def _emb_fn(texts):
+        if pipeline and pipeline.embedding_provider:
+            return pipeline.embedding_provider.embed(texts)
+        return [[0.0] * 768]
+
+    cache_manager = CacheManager(embedding_fn=_emb_fn)
+    # 将 embedding cache 注入 embedding_provider
+    if pipeline:
+        pipeline.embedding_provider._cache = cache_manager.embedding
+    print("  ✅ 缓存就绪（Redis 优先 / 内存 fallback）")
+
+    # 初始化管道（传入 reranker 和 cache）
     pipeline = RAGPipeline(
         data_dir=settings.data_dir,
         persist_dir=settings.persist_dir,
@@ -210,6 +243,9 @@ async def startup():
         top_k=settings.top_k,
         chunk_min_chars=settings.chunk_min_chars,
         chunk_max_chars=settings.chunk_max_chars,
+        enable_reranker=True,
+        reranker=reranker if reranker.model_ready else None,
+        cache_manager=cache_manager,
     )
 
     # 如果知识库为空，自动初始化
@@ -255,7 +291,39 @@ async def startup():
     print("📊 Metrics: /metrics")
     if _MCP_ENABLED:
         _mount_mcp_server(pipeline)
+
+    # ── 启动文档监听器（增量索引） ──
+    from src.watcher import ProcessedFilesTracker
+
+    print("\n👀 启动文档监听器...")
+    try:
+        persist_path = os.path.join(settings.log_dir, ".processed_files.json")
+        tracker = ProcessedFilesTracker(persist_path=persist_path)
+        watcher = DocumentWatcher(pipeline, watch_dir=settings.data_dir, tracker=tracker)
+        watcher.start()
+        print("  ✅ 监听 data/ 目录，新增 PDF/MD/TXT 自动入库")
+    except Exception as e:
+        print(f"  ⚠️ 文档监听器启动失败: {e}")
+        watcher = None
+
+    print(f"🔧 Embedding: {pipeline.embedding_provider.__class__.__name__}")
+    print(f"🎯 Top-K: {pipeline.top_k}")
+    print(f"🤖 Agent 模式: {'启用' if settings.agent_mode else '关闭'}")
+    print(f"📊 Cross-encoder Reranker: {'启用' if reranker and reranker.model_ready else '未加载'}")
+    print(f"💾 缓存: {'Redis' if RedisClient.is_enabled() else '内存 LRU'}")
+    print("📊 Metrics: /metrics")
+    if _MCP_ENABLED:
+        _mount_mcp_server(pipeline)
     print("=" * 60 + "\n")
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    """清理资源"""
+    global watcher
+    if watcher:
+        watcher.stop()
+    print("👋 API 服务已关闭")
 
 
 def _init_diagnosis_model():
@@ -1021,6 +1089,125 @@ def _read_jsonl(filepath: str, n: int) -> list:
                 except json.JSONDecodeError:
                     continue
     return records[-n:]
+
+
+# ── 接口 7: 知识库管理 ────────────────────────────
+
+
+@app.get("/knowledge-base/collections")
+async def kb_list_collections(
+    request: Request,
+    _: None = Depends(verify_api_key),
+):
+    """列出所有集合"""
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="服务尚未初始化完成")
+    cols = KnowledgeBase.list_collections(pipeline.vector_store)
+    return {"success": True, "collections": cols}
+
+
+@app.post("/knowledge-base/collections")
+async def kb_create_collection(
+    request: Request,
+    _: None = Depends(verify_api_key),
+    name: str = Form(..., description="集合名称"),
+    tags: str = Form("", description="逗号分隔的标签"),
+):
+    """创建新集合"""
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="服务尚未初始化完成")
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    result = KnowledgeBase.create_collection(pipeline.vector_store, name, tags=tag_list)
+    return {"success": True, "collection": result}
+
+
+@app.delete("/knowledge-base/collections/{name}")
+async def kb_delete_collection(
+    name: str,
+    request: Request,
+    _: None = Depends(verify_api_key),
+):
+    """删除集合"""
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="服务尚未初始化完成")
+    ok = KnowledgeBase.delete_collection(pipeline.vector_store, name)
+    return {"success": ok}
+
+
+@app.get("/knowledge-base/collections/{name}")
+async def kb_get_collection(
+    name: str,
+    request: Request,
+    _: None = Depends(verify_api_key),
+):
+    """获取集合详情"""
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="服务尚未初始化完成")
+    info = KnowledgeBase.get_collection_info(pipeline.vector_store, name)
+    if info is None:
+        raise HTTPException(status_code=404, detail=f"集合 '{name}' 不存在")
+    return {"success": True, "collection": info}
+
+
+@app.post("/knowledge-base/collections/{name}/rebuild")
+async def kb_rebuild_collection(
+    name: str,
+    request: Request,
+    _: None = Depends(verify_api_key),
+):
+    """重建集合索引"""
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="服务尚未初始化完成")
+    # 切换到目标集合
+    old_name = pipeline.vector_store.collection_name
+    pipeline.vector_store.collection_name = name
+    try:
+        count = pipeline.initialize_knowledge_base(force_reindex=True)
+        version = KnowledgeBase.bump_version(pipeline.vector_store, name)
+        return {"success": True, "total_chunks": count, "version": version}
+    finally:
+        pipeline.vector_store.collection_name = old_name
+
+
+@app.get("/knowledge-base/tags")
+async def kb_list_tags(
+    request: Request,
+    _: None = Depends(verify_api_key),
+):
+    """列出所有标签"""
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="服务尚未初始化完成")
+    tags = KnowledgeBase.get_all_tags(pipeline.vector_store)
+    return {"success": True, "tags": tags}
+
+
+# ── 接口 8: 缓存管理 ──────────────────────────────
+
+
+@app.post("/cache/clear")
+async def cache_clear(
+    request: Request,
+    _: None = Depends(verify_admin_api_key),
+):
+    """清除所有缓存"""
+    if cache_manager:
+        cache_manager.invalidate_all()
+    return {"success": True, "message": "缓存已清除"}
+
+
+@app.get("/cache/status")
+async def cache_status(
+    request: Request,
+    _: None = Depends(verify_api_key),
+):
+    """缓存状态"""
+    from src.cache import RedisClient
+
+    return {
+        "success": True,
+        "redis_connected": RedisClient.is_enabled(),
+        "cache_type": "redis" if RedisClient.is_enabled() else "memory_lru",
+    }
 
 
 # ── MCP SSE 挂载 ────────────────────────────────────

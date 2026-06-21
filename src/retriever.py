@@ -6,7 +6,7 @@
 三级召回流水线（HybridRetriever 增强版）：
   1. Query Rewriting  — LLM 将用户口语化问题改写为检索友好查询
   2. Hybrid Search    — 向量检索 + BM25 → RRF 融合
-  3. Reranker         — LLM 对候选结果进行相关性重排序
+  3. Reranker         — Cross-encoder 或 LLM 对候选结果进行相关性重排序
 """
 
 import json
@@ -156,10 +156,11 @@ class HybridRetriever(Retriever):
         embedding_provider: EmbeddingProvider,
         top_k: int = 5,
         bm25_weight: float = 0.5,
-        generator=None,  # LLMGenerator 实例，用于 rewrite + rerank
+        generator=None,  # LLMGenerator 实例，用于 rewrite + LLM rerank
         enable_rewrite: bool = True,
         enable_reranker: bool = True,
         rerank_top_k: int = 20,  # 送入 reranker 的候选数（从混合检索取这么多）
+        reranker=None,  # CrossEncoderReranker 实例（优先于 LLM reranker）
     ):
         super().__init__(vector_store, embedding_provider, top_k)
         self.bm25_weight = bm25_weight
@@ -167,6 +168,7 @@ class HybridRetriever(Retriever):
         self.enable_rewrite = enable_rewrite
         self.enable_reranker = enable_reranker
         self.rerank_top_k = rerank_top_k
+        self._reranker = reranker  # CrossEncoderReranker 实例
         self._bm25 = None
         self._bm25_docs: list[str] = []
         self._bm25_ids: list[str] = []
@@ -336,14 +338,27 @@ class HybridRetriever(Retriever):
     # ══════════════════════════════════════════════════
 
     def _can_rerank(self) -> bool:
-        """检查是否满足 reranker 条件"""
-        return self.enable_reranker and self.generator is not None
+        """检查是否满足 reranker 条件（cross-encoder 或 LLM）"""
+        return self.enable_reranker and (self._reranker is not None or self.generator is not None)
 
     def _rerank(self, query: str, chunks: list[dict[str, Any]], top_k: int) -> list[dict[str, Any]]:
-        """调用 LLM 对候选 chunks 进行相关性重排序
+        """对候选 chunks 进行相关性重排序
 
-        将 chunks 聚合为一段文本，LLM 逐一评分，按评分降序取 top_k。
+        优先使用 Cross-encoder reranker（高效），
+        回退到 LLM-as-reranker（贵，但准确）。
         """
+        # ── Cross-encoder 优先 ──
+        if self._reranker is not None and self._reranker.model_ready:
+            try:
+                return self._reranker.rerank(query, chunks, top_k)
+            except Exception:
+                # cross-encoder 失败时回退 LLM
+                pass
+
+        # ── LLM-as-reranker（回退方案） ──
+        if self.generator is None:
+            return chunks[:top_k]
+
         # 构建带编号的片段列表文本
         chunk_lines = []
         for i, c in enumerate(chunks):
@@ -369,10 +384,9 @@ class HybridRetriever(Retriever):
         if scores is None or len(scores) != len(chunks):
             return chunks[:top_k]
 
-        # 将评分挂到 chunk 上并排序
         for i, c in enumerate(chunks):
             c["_rerank_score"] = scores[i] if i < len(scores) else 0
-            c["score"] = scores[i]  # 覆盖 score 为 reranker 评分
+            c["score"] = scores[i]
 
         reranked = sorted(chunks, key=lambda x: x["_rerank_score"], reverse=True)
         return reranked[:top_k]

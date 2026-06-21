@@ -55,6 +55,7 @@ class SentenceTransformerEmbedding(EmbeddingProvider):
         self.model_name = model_name
         self._model = None
         self._is_e5 = "e5" in model_name.lower()
+        self._cache = None  # EmbeddingCache 实例，由外部设置
         # ModelScope 本地缓存路径
         self._ms_local_path = os.path.join(
             os.path.expanduser("~/.cache/modelscope/hub"),
@@ -120,19 +121,21 @@ class SentenceTransformerEmbedding(EmbeddingProvider):
         texts: list[str],
         prefix: str | None = None,
     ) -> list[list[float]]:
-        """生成文本向量
-
-        Args:
-            texts:  文本列表
-            prefix: 可选前缀（e5 模型索引时用 "passage: "，查询时用 "query: "）
-
-        Returns:
-            List[float] 组成的向量列表
-        """
+        """生成文本向量（带 EmbeddingCache）"""
         self._load_model()
 
         if prefix:
             texts = [f"{prefix}{t}" for t in texts]
+
+        # 单文本走缓存，批量不走（批量通常是首次入库）
+        if len(texts) == 1 and self._cache is not None:
+            cached = self._cache.get(texts[0])
+            if cached:
+                return [cached]
+            embedding = self._model.encode(texts, show_progress_bar=False, normalize_embeddings=True)
+            result = embedding.tolist()
+            self._cache.set(texts[0], result[0])
+            return result
 
         embeddings = self._model.encode(texts, show_progress_bar=False, normalize_embeddings=True)
         return embeddings.tolist()

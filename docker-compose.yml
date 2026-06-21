@@ -27,6 +27,23 @@ name: rag-system
 
 services:
 
+  # ── Redis（可选缓存后端） ────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: rag-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    networks:
+      - rag-network
+
   # ── 后端：FastAPI 服务（RAG + Agent + 诊断推理） ──
   backend:
     build:
@@ -47,6 +64,10 @@ services:
     environment:
       - API_PORT=8000
       - API_HOST=0.0.0.0
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_started
     # Windows 上 GPU 不可用，已切换为 CPU-only 的 Python 镜像
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/health', timeout=5); assert r.status==200"]
@@ -79,3 +100,6 @@ services:
 networks:
   rag-network:
     driver: bridge
+
+volumes:
+  redis_data:

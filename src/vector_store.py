@@ -1,6 +1,8 @@
 """
 向量数据库模块
 使用 Chroma 存储 Chunk 向量和元数据
+
+支持多集合、标签过滤、集合元数据。
 """
 
 import os
@@ -39,13 +41,42 @@ class VectorStore:
             print(f"  🆕 创建新集合 '{self.collection_name}'")
         return self._collection
 
-    def delete_collection(self):
+    def get_collection(self, name: str):
+        """按名称获取集合（用于知识库管理）"""
+        client = self._get_client()
+        try:
+            return client.get_collection(name)
+        except Exception:
+            return None
+
+    def list_collections(self) -> list:
+        """列出所有集合（用于知识库管理）"""
+        client = self._get_client()
+        try:
+            return client.list_collections()
+        except Exception:
+            return []
+
+    def create_collection(self, name: str, metadata: dict | None = None):
+        """创建新集合（用于知识库管理）"""
+        client = self._get_client()
+        return client.create_collection(name, metadata=metadata)
+
+    def update_collection_metadata(self, name: str, metadata: dict) -> None:
+        """更新集合元数据（版本号等）"""
+        col = self.get_collection(name)
+        if col:
+            col.modify(metadata=metadata)
+
+    def delete_collection(self, name: str | None = None):
         """删除集合"""
+        target = name or self.collection_name
         try:
             client = self._get_client()
-            client.delete_collection(self.collection_name)
-            self._collection = None
-            print(f"  🗑️ 已删除集合 '{self.collection_name}'")
+            client.delete_collection(target)
+            if target == self.collection_name:
+                self._collection = None
+            print(f"  🗑️ 已删除集合 '{target}'")
         except Exception as e:
             print(f"  ⚠️ 删除集合失败: {e}")
 
@@ -77,15 +108,20 @@ class VectorStore:
         self,
         query_embedding: list[float],
         top_k: int = 5,
+        where: dict | None = None,
     ) -> list[dict[str, Any]]:
-        """检索最相似的 Chunk"""
+        """检索最相似的 Chunk（支持 where 过滤）"""
         collection = self.get_or_create_collection()
 
-        results = collection.query(
-            query_embeddings=[query_embedding],
-            n_results=top_k,
-            include=["documents", "metadatas", "distances"],
-        )
+        kwargs = {
+            "query_embeddings": [query_embedding],
+            "n_results": top_k,
+            "include": ["documents", "metadatas", "distances"],
+        }
+        if where:
+            kwargs["where"] = where
+
+        results = collection.query(**kwargs)
 
         chunks = []
         if results["ids"][0]:
@@ -95,7 +131,7 @@ class VectorStore:
                         "id": results["ids"][0][i],
                         "text": results["documents"][0][i],
                         "metadata": results["metadatas"][0][i],
-                        "score": 1 - results["distances"][0][i],  # 余弦相似度
+                        "score": 1 - results["distances"][0][i],
                     }
                 )
         return chunks
@@ -109,12 +145,10 @@ class VectorStore:
             return 0
 
     def close(self):
-        """释放 ChromaDB 客户端资源，解除文件锁"""
+        """释放 ChromaDB 客户端资源"""
         self._collection = None
         if self._client is not None:
             try:
-                # ChromaDB PersistentClient 没有显式 close()，
-                # 清空引用让 GC 回收底层 SQLite/DuckDB 连接
                 self._client = None
             except Exception:
                 pass
@@ -123,7 +157,6 @@ class VectorStore:
         """获取集合中所有文档（不含 embedding，用于 BM25 建索引）"""
         try:
             collection = self.get_or_create_collection()
-            # 不传 where 参数 = 获取全部
             results = collection.get(include=["documents", "metadatas"])
             chunks = []
             if results["ids"]:
