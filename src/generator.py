@@ -308,11 +308,14 @@ class ChatWithToolsResult:
     content:        LLM 的文本回复（无 tool_calls 时的回答）
     tool_calls:     结构化工具调用列表 [{id, type, function: {name, arguments}}]
     finish_reason:  终止原因：stop | tool_calls | length
+    is_degraded:    True 表示该结果是降级而非 LLM 原始响应
+                    （Function Calling 失败 → 纯文本兜底）
     """
 
     content: str | None = None
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     finish_reason: str = "stop"
+    is_degraded: bool = False
 
 
 class LLMGenerator:
@@ -639,7 +642,7 @@ class LLMGenerator:
             elapsed = time.monotonic() - start
             span.set_attribute("duration_ms", round(elapsed * 1000, 1))
             record_llm_latency(elapsed, model=self.model, api_type=self._detect_api_type())
-            return ChatWithToolsResult(content=text, tool_calls=[], finish_reason="stop")
+            return ChatWithToolsResult(content=text, tool_calls=[], finish_reason="stop", is_degraded=True)
 
     def _call_openai_chat_with_tools(
         self,

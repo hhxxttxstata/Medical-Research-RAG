@@ -906,6 +906,16 @@ class FunctionCallingLoop(AgentLoopBase):
                 parallel_tool_calls=True,
             )
 
+            # ── 显式降级检查：API 不可用 → 降级到 ReAct 文本协议 ──
+            if response.is_degraded:
+                fallback = ReActLoop(
+                    tools=self.tools,
+                    generator=self.generator,
+                    rag_pipeline=self.rag_pipeline,
+                    harness_config=self._config,
+                )
+                return fallback.run(query, context=context, memory_context=memory_context)
+
             # ── 预算：步数 + Token ──
             response_text = response.content or ""
             step_tokens = BudgetTracker.estimate_tokens(response_text)
