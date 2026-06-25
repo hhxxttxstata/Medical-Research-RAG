@@ -12,6 +12,9 @@ from typing import Any
 
 from src.agent import (
     Agent,
+    AgentBudget,
+    AgentHarnessConfig,
+    BudgetTracker,
     IntentAnalyzer,
     LLMIntentClassifier,
     ReActLoop,
@@ -272,7 +275,7 @@ Action Input: {"query": "test"}""",
             tools={},
             generator=gen,
             rag_pipeline=MockRAGPipeline(),
-            max_steps=5,
+            harness_config=AgentHarnessConfig(max_steps=5),
         )
         result = loop.run("test")
         assert result["success"] is False
@@ -307,7 +310,7 @@ Action Input: {"query": "test"}""",
             tools={},
             generator=rotating_gen,
             rag_pipeline=MockRAGPipeline(),
-            max_steps=4,
+            harness_config=AgentHarnessConfig(max_steps=4),
         )
         result = loop.run("test")
         assert result["steps"] == 4
@@ -343,7 +346,7 @@ Action Input: {"msg": "hello"}""",
             tools={"echo": SimpleTool()},
             generator=gen,
             rag_pipeline=MockRAGPipeline(),
-            max_steps=2,
+            harness_config=AgentHarnessConfig(max_steps=2),
         )
         result = loop.run("test")
         # ReAct 循环要么在有工具输出后停止，要么按步数终止
@@ -393,7 +396,7 @@ Action Input: {"query": "肺栓塞", "top_k": 3}""",
             tools={},
             generator=gen,
             rag_pipeline=MockRAGPipeline(),
-            max_steps=2,
+            harness_config=AgentHarnessConfig(max_steps=2),
         )
         result = loop.run("肺栓塞是什么")
         # 应能触发 retrieve 并得到结果
@@ -463,3 +466,421 @@ class TestAgent:
         assert agent._react is None
         _ = agent._react_loop
         assert agent._react is not None
+
+
+# ═══════════════════════════════════════════════════════════════
+#  五、BudgetTracker 测试
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestBudgetTracker:
+    """BudgetTracker 单元测试"""
+
+    def test_steps_exceeded(self):
+        """步数超限应返回终止原因"""
+        budget = AgentBudget(max_steps=3, max_tokens_total=99999, max_wall_clock_sec=999, max_tool_calls=999)
+        tracker = BudgetTracker(budget)
+        assert tracker.record_step(10) is None  # step 1
+        assert tracker.record_step(10) is None  # step 2
+        assert tracker.record_step(10) is None  # step 3
+        reason = tracker.record_step(10)  # step 4 > max_steps=3
+        assert reason is not None
+        assert "推理步数" in reason
+
+    def test_tokens_total_exceeded(self):
+        """Token 总数超限应返回终止原因"""
+        budget = AgentBudget(max_steps=99, max_tokens_total=50, max_wall_clock_sec=999, max_tool_calls=999)
+        tracker = BudgetTracker(budget)
+        assert tracker.record_step(30) is None
+        assert tracker.record_step(21) is not None  # 累计 51 > 50
+
+    def test_wall_clock_exceeded(self):
+        """墙钟时间超限应返回终止原因"""
+        budget = AgentBudget(max_steps=99, max_tokens_total=99999, max_wall_clock_sec=0.01, max_tool_calls=999)
+        tracker = BudgetTracker(budget)
+        import time
+
+        time.sleep(0.02)
+        reason = tracker.check_wall_clock()
+        assert reason is not None
+        assert "超时" in reason
+
+    def test_tool_calls_exceeded(self):
+        """工具调用次数超限应返回终止原因"""
+        budget = AgentBudget(max_steps=99, max_tokens_total=99999, max_wall_clock_sec=999, max_tool_calls=2)
+        tracker = BudgetTracker(budget)
+        assert tracker.record_tool_call() is None
+        assert tracker.record_tool_call() is None
+        reason = tracker.record_tool_call()  # 第 3 次 > 2
+        assert reason is not None
+        assert "工具调用" in reason
+
+    def test_estimate_tokens_chinese(self):
+        """中文文本的 Token 估算应为正数"""
+        tokens = BudgetTracker.estimate_tokens("肺栓塞是一种严重的疾病")
+        assert tokens > 0
+        assert isinstance(tokens, int)
+
+    def test_estimate_tokens_empty(self):
+        """空文本的 Token 估算应为 0"""
+        tokens = BudgetTracker.estimate_tokens("")
+        assert tokens == 0
+
+    def test_estimate_tokens_mixed(self):
+        """中英文混合文本的 Token 估算"""
+        tokens = BudgetTracker.estimate_tokens("肺栓塞 PE 的诊断需要 CTPA 检查")
+        assert tokens > 0
+        assert isinstance(tokens, int)
+
+    def test_reset_clears_counters(self):
+        """reset() 应重置所有计数器"""
+        budget = AgentBudget(max_steps=2, max_tokens_total=999, max_wall_clock_sec=999, max_tool_calls=999)
+        tracker = BudgetTracker(budget)
+        tracker.record_step(10)
+        tracker.record_tool_call()
+        tracker.reset()
+        assert tracker.step_count == 0
+        assert tracker.token_count == 0
+        assert tracker.tool_call_count == 0
+
+    def test_finalize_records_metrics(self):
+        """finalize() 应在不抛出异常的情况下完成"""
+        budget = AgentBudget(max_steps=99, max_tokens_total=99999, max_wall_clock_sec=999, max_tool_calls=999)
+        tracker = BudgetTracker(budget)
+        tracker.record_step(100)
+        tracker.record_tool_call()
+        # 只检查不抛异常
+        tracker.finalize()
+
+    def test_agent_with_budget_passed_to_loop(self):
+        """Agent 传入 harness_config 后，ReActLoop 应能初始化"""
+        harness = AgentHarnessConfig(max_steps=5, max_tokens_total=99999)
+        agent = Agent(harness_config=harness)
+        loop = agent._react_loop
+        # harness config 被传递到了 FunctionCallingLoop 初始化
+        assert loop._budget is not None
+        assert loop._budget.max_steps == 5
+
+
+# ═══════════════════════════════════════════════════════════════
+#  六、Circuit Breaker 测试（通过 MockGenerator）
+# ═══════════════════════════════════════════════════════════════
+
+
+class FailingGenerator:
+    """模拟总是失败的 LLM Generator"""
+
+    def __init__(self, fail_count: int = 99):
+        self.fail_count = fail_count
+        self.attempts = 0
+
+    def chat(self, messages, temperature=0.0, max_tokens=256) -> str:
+        self.attempts += 1
+        if self.attempts <= self.fail_count:
+            raise ConnectionError("模拟网络错误")
+        return "最终成功回复"
+
+
+class TestGeneratorResilience:
+    """LLMGenerator 容错测试"""
+
+    def test_retry_success_eventually(self):
+        """重试 N 次后应该成功（模拟指数退避）"""
+        from src.generator import LLMGenerator
+
+        gen = LLMGenerator(
+            api_key="sk-test-valid-key",
+            base_url="https://api.openai.com/v1",
+            model="gpt-3.5-turbo",
+            retry_max_attempts=3,
+            retry_base_delay=0.01,  # 快速重试
+        )
+
+        # 验证 _with_retry 重试逻辑正常
+        call_count = [0]
+
+        def failing_fn(*args):
+            call_count[0] += 1
+            if call_count[0] < 2:
+                raise ConnectionError("模拟错误")
+            return "success"
+
+        result = gen._with_retry(failing_fn)
+        assert result == "success"
+        assert call_count[0] == 2  # 第 1 次失败，第 2 次成功
+
+    def test_retry_eventually_fails(self):
+        """重试耗尽后应抛出异常"""
+        from src.generator import LLMGenerator
+
+        gen = LLMGenerator(
+            api_key="sk-test-valid-key",
+            base_url="https://api.openai.com/v1",
+            model="gpt-3.5-turbo",
+            retry_max_attempts=2,
+            retry_base_delay=0.01,
+        )
+
+        call_count = [0]
+
+        def always_fail(*args):
+            call_count[0] += 1
+            raise ConnectionError("始终失败")
+
+        import pytest
+
+        with pytest.raises(ConnectionError):
+            gen._with_retry(always_fail)
+        assert call_count[0] == 2  # 重试耗尽
+
+    def test_circuit_breaker_blocks(self):
+        """熔断器打开后应拒绝请求"""
+        from src.generator import LLMGenerator
+
+        gen = LLMGenerator(
+            api_key="sk-test-valid-key",
+            base_url="https://api.openai.com/v1",
+            model="gpt-3.5-turbo",
+            circuit_breaker_threshold=3,
+            circuit_breaker_timeout=999,  # 长时间熔断
+        )
+
+        # 模拟连续失败
+        for _ in range(3):
+            gen._record_failure()
+
+        assert gen._cb_state == "open"
+        assert gen._check_circuit_breaker() is False
+
+    def test_circuit_breaker_recovers(self):
+        """熔断器在超时后应进入 half_open 状态"""
+        from src.generator import LLMGenerator
+
+        gen = LLMGenerator(
+            api_key="sk-test-valid-key",
+            base_url="https://api.openai.com/v1",
+            model="gpt-3.5-turbo",
+            circuit_breaker_threshold=2,
+            circuit_breaker_timeout=0.01,  # 快速恢复
+        )
+
+        # 触发熔断
+        gen._record_failure()
+        gen._record_failure()
+        assert gen._cb_state == "open"
+
+        # 等待超时后检查
+        import time
+
+        time.sleep(0.02)
+        assert gen._check_circuit_breaker() is True  # 放行试探
+        assert gen._cb_state == "half_open"
+
+        # 成功后恢复
+        gen._record_success()
+        assert gen._cb_state == "closed"
+
+    def test_4xx_errors_not_retried(self):
+        """4xx 错误不应重试"""
+        from src.generator import LLMGenerator
+
+        gen = LLMGenerator(
+            api_key="sk-test-valid-key",
+            base_url="https://api.openai.com/v1",
+            model="gpt-3.5-turbo",
+            retry_max_attempts=3,
+            retry_base_delay=0.01,
+        )
+
+        call_count = [0]
+
+        def unauthorized(*args):
+            call_count[0] += 1
+            raise ValueError("401 Unauthorized")
+
+        import pytest
+
+        with pytest.raises(ValueError):
+            gen._with_retry(unauthorized)
+        assert call_count[0] == 1  # 只调用了一次，未重试
+
+
+# ═══════════════════════════════════════════════════════════════
+#  七、Policy-as-Code 测试
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestToolPolicy:
+    """ToolPolicy 单元测试"""
+
+    def test_default_auto(self):
+        """默认策略应为 auto"""
+        from src.tools.base import ToolPolicy
+
+        policy = ToolPolicy()
+        assert policy.access_level == "auto"
+        assert policy.rate_limit == 0
+        assert policy.require_reason is False
+
+    def test_custom_policy(self):
+        """自定义策略应正确设置"""
+        from src.tools.base import ToolPolicy
+
+        policy = ToolPolicy(access_level="confirm", rate_limit=10, require_reason=True)
+        assert policy.access_level == "confirm"
+        assert policy.rate_limit == 10
+        assert policy.require_reason is True
+
+    def test_to_dict(self):
+        """to_dict 应返回正确字段"""
+        from src.tools.base import ToolPolicy
+
+        policy = ToolPolicy(access_level="confirm", rate_limit=10)
+        d = policy.to_dict()
+        assert d["access_level"] == "confirm"
+        assert d["rate_limit"] == 10
+        assert "allowed_roles" in d
+
+
+class TestPolicyEnforcer:
+    """PolicyEnforcer 单元测试"""
+
+    def test_auto_passes(self):
+        """auto 级别应直接放行"""
+        from src.tools.base import PolicyEnforcer, ToolPolicy
+
+        enforcer = PolicyEnforcer()
+        policy = ToolPolicy(access_level="auto")
+        result = enforcer.check("test_tool", policy)
+        assert result.allowed is True
+        assert result.needs_confirmation is False
+        enforcer.record_call("test_tool")
+
+    def test_confirm_requires_approval(self):
+        """confirm 级别应返回 needs_confirmation=True"""
+        from src.tools.base import PolicyEnforcer, ToolPolicy
+
+        enforcer = PolicyEnforcer()
+        policy = ToolPolicy(access_level="confirm", require_reason=True)
+        result = enforcer.check("test_tool", policy, reason="测试诊断")
+        assert result.allowed is True
+        assert result.needs_confirmation is True
+        assert "确认" in result.reason
+
+    def test_confirm_requires_reason(self):
+        """confirm + require_reason 但无理由应拒绝"""
+        from src.tools.base import PolicyEnforcer, ToolPolicy
+
+        enforcer = PolicyEnforcer()
+        policy = ToolPolicy(access_level="confirm", require_reason=True)
+        result = enforcer.check("test_tool", policy, reason="")
+        assert result.allowed is False
+        assert "理由" in result.reason
+
+    def test_rate_limit_exceeded(self):
+        """超过 rate_limit 应拒绝"""
+        from src.tools.base import PolicyEnforcer, ToolPolicy
+
+        enforcer = PolicyEnforcer()
+        policy = ToolPolicy(access_level="auto", rate_limit=2)
+
+        # 前两次通过
+        assert enforcer.check("rate_tool", policy).allowed
+        enforcer.record_call("rate_tool")
+        assert enforcer.check("rate_tool", policy).allowed
+        enforcer.record_call("rate_tool")
+
+        # 第三次应拒绝
+        result = enforcer.check("rate_tool", policy)
+        assert result.allowed is False
+        assert "频率超限" in result.reason
+
+    def test_rate_limit_reset_after_reset(self):
+        """reset 后应恢复调用"""
+        from src.tools.base import PolicyEnforcer, ToolPolicy
+
+        enforcer = PolicyEnforcer()
+        policy = ToolPolicy(access_level="auto", rate_limit=1)
+
+        assert enforcer.check("r_tool", policy).allowed
+        enforcer.record_call("r_tool")
+        assert enforcer.check("r_tool", policy).allowed is False
+
+        enforcer.reset("r_tool")
+        assert enforcer.check("r_tool", policy).allowed
+
+    def test_manual_level(self):
+        """manual 级别应返回 allowed=False"""
+        from src.tools.base import PolicyEnforcer, ToolPolicy
+
+        enforcer = PolicyEnforcer()
+        policy = ToolPolicy(access_level="manual")
+        result = enforcer.check("manual_tool", policy)
+        assert result.allowed is False
+        assert "手动" in result.reason
+
+    def test_unknown_level(self):
+        """未知访问级别应安全拒绝"""
+        from src.tools.base import PolicyEnforcer, ToolPolicy
+
+        enforcer = PolicyEnforcer()
+        policy = ToolPolicy(access_level="unknown_level")
+        result = enforcer.check("unknown_tool", policy)
+        assert result.allowed is False
+        assert "未知" in result.reason
+
+    def test_policy_to_dict(self):
+        """PolicyResult.to_dict 应正确序列化"""
+        from src.tools.base import PolicyResult
+
+        result = PolicyResult(allowed=True, level="confirm", reason="测试", needs_confirmation=True)
+        d = result.to_dict()
+        assert d["allowed"] is True
+        assert d["needs_confirmation"] is True
+        assert d["level"] == "confirm"
+
+
+class TestToolPolicyIntegration:
+    """工具策略集成测试"""
+
+    def test_diagnosis_tool_policy_confirm(self):
+        """诊断工具策略应为 confirm"""
+        from src.tools.diagnosis_tool import DiagnosisTool
+
+        tool = DiagnosisTool()
+        assert tool.policy.access_level == "confirm"
+        assert tool.policy.rate_limit == 10
+        assert tool.policy.require_reason is True
+
+    def test_report_generator_policy_auto(self):
+        """报告生成工具策略应为 auto"""
+        from src.tools.report_generator import ReportGenerator
+
+        tool = ReportGenerator()
+        assert tool.policy.access_level == "auto"
+        assert tool.policy.rate_limit == 60
+
+    def test_simple_tool_default_policy(self):
+        """新增 SimpleTool 默认 policy 应为 auto"""
+        from src.tools.base import Tool, ToolPolicy
+
+        class SimpleTool(Tool):
+            name = "simple"
+            description = "simple tool"
+            policy = ToolPolicy()
+
+            def run(self, **kwargs):
+                return {"success": True}
+
+        tool = SimpleTool()
+        assert tool.policy.access_level == "auto"
+        schema = tool.get_schema()
+        assert "policy" in schema
+        assert schema["policy"]["access_level"] == "auto"
+
+    def test_fc_loop_with_policy_enforcer(self):
+        """FunctionCallingLoop 应初始化 policy_enforcer"""
+        from src.agent import FunctionCallingLoop
+
+        loop = FunctionCallingLoop(tools={})
+        assert loop._policy_enforcer is not None

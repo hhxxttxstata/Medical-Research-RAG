@@ -6,6 +6,7 @@
 
 import json
 import os
+import random
 import re
 import sys
 import time
@@ -315,7 +316,13 @@ class ChatWithToolsResult:
 
 
 class LLMGenerator:
-    """大模型生成器"""
+    """大模型生成器
+
+    内置能力：
+      - 指数退避重试（可配置重试次数 + 基础延迟）
+      - Circuit Breaker（连续 N 次失败后熔断 T 秒）
+      - 多 API 提供者自动切换
+    """
 
     def __init__(
         self,
@@ -324,6 +331,12 @@ class LLMGenerator:
         model: str | None = None,
         temperature: float = 0.1,  # 降低温度，减少幻觉
         max_tokens: int = 2048,
+        # 指数退避重试
+        retry_max_attempts: int = 3,
+        retry_base_delay: float = 1.0,
+        # Circuit Breaker
+        circuit_breaker_threshold: int = 5,
+        circuit_breaker_timeout: float = 30.0,
     ):
         # 按优先级读取 API 配置：DeepSeek > SiliconFlow > OpenAI
         self.api_key = (
@@ -344,6 +357,17 @@ class LLMGenerator:
         self.temperature = temperature
         self.max_tokens = max_tokens if max_tokens else 4096  # 默认4096，适应混合回答
 
+        # 指数退避重试配置
+        self.retry_max_attempts = retry_max_attempts
+        self.retry_base_delay = retry_base_delay
+
+        # Circuit Breaker 状态
+        self.cb_threshold = circuit_breaker_threshold
+        self.cb_timeout = circuit_breaker_timeout
+        self._cb_state = "closed"  # "closed" | "open" | "half_open"
+        self._cb_failures = 0
+        self._cb_open_until = 0.0
+
     def _is_valid_api_key(self, key: str) -> bool:
         """检查 API Key 是否有效（排除空值和占位符）"""
         if not key or key == "":
@@ -362,6 +386,67 @@ class LLMGenerator:
         if "openai" in self.base_url.lower():
             return "openai"
         return "openai_compatible"
+
+    # ── Circuit Breaker ──────────────────────────────────
+
+    def _check_circuit_breaker(self) -> bool:
+        """检查熔断器状态。True = 允许请求，False = 熔断中"""
+        if self._cb_state == "open":
+            if time.monotonic() >= self._cb_open_until:
+                self._cb_state = "half_open"
+                print("  🔌 Circuit Breaker: OPEN → HALF_OPEN （试探放行）")
+                return True
+            print("  🔌 Circuit Breaker: OPEN 中，快速拒绝")
+            return False
+        return True
+
+    def _record_success(self):
+        """调用成功 → 关闭熔断器"""
+        self._cb_failures = 0
+        if self._cb_state == "half_open":
+            self._cb_state = "closed"
+            print("  🔌 Circuit Breaker: HALF_OPEN → CLOSED （恢复）")
+
+    def _record_failure(self):
+        """调用失败 → 计数，达到阈值则熔断"""
+        self._cb_failures += 1
+        if self._cb_failures >= self.cb_threshold:
+            self._cb_state = "open"
+            self._cb_open_until = time.monotonic() + self.cb_timeout
+            print(f"  🔌 Circuit Breaker: CLOSED → OPEN （连续{self._cb_failures}次失败，熔断{self.cb_timeout}s）")
+
+    # ── 指数退避重试 ──────────────────────────────────
+
+    def _with_retry(self, fn, *args, **kwargs):
+        """带指数退避重试的执行调用
+
+        对网络/超时/5xx 类错误重试。4xx 不重试（请求本身有问题）。
+        """
+        last_exception = None
+        for attempt in range(self.retry_max_attempts):
+            try:
+                result = fn(*args, **kwargs)
+                self._record_success()
+                return result
+            except Exception as e:
+                last_exception = e
+                # 4xx 不重试
+                err_str = str(e).lower()
+                if any(code in err_str for code in ["401", "403", "404", "400", "422"]):
+                    if "401" in err_str or "unauthorized" in err_str or "api key" in err_str:
+                        print("  ⚠️ API Key 无效，不重试")
+                    self._record_failure()
+                    raise
+
+                self._record_failure()
+
+                if attempt < self.retry_max_attempts - 1:
+                    # 指数退避 + jitter
+                    delay = self.retry_base_delay * (2**attempt) * (0.8 + 0.4 * random.random())
+                    print(f"  🔄 重试 #{attempt + 1}/{self.retry_max_attempts} ({delay:.1f}s)...")
+                    time.sleep(delay)
+
+        raise last_exception
 
     def generate(
         self,
@@ -433,6 +518,14 @@ class LLMGenerator:
         finally:
             _span_ctx.__exit__(None, None, None)
 
+    # ── Chat 接口（带 Circuit Breaker + 重试） ──────────
+
+    def _get_chat_fn(self):
+        """返回适合当前配置的纯文本聊天函数"""
+        if self._is_valid_api_key(self.api_key):
+            return self._call_openai_chat
+        return self._call_ollama_chat
+
     def chat(
         self,
         messages: list[dict[str, str]],
@@ -442,6 +535,7 @@ class LLMGenerator:
         """面向对话 / ReAct 循环的聊天接口
 
         直接传入 messages 列表，适用于多轮对话场景（如 Agent 的 ReAct 循环）。
+        内置 Circuit Breaker + 指数退避重试。
         """
         global _tracer
         if _tracer is None:
@@ -449,19 +543,19 @@ class LLMGenerator:
         start = time.monotonic()
         with _tracer.start_as_current_span("generator.chat") as span:
             span.set_attribute("model_name", self.model)
-            has_valid_key = self._is_valid_api_key(self.api_key)
-            span.set_attribute("has_api_key", has_valid_key)
 
-            if has_valid_key:
-                try:
-                    result = self._call_openai_chat(messages, temperature, max_tokens)
-                except Exception:
-                    result = self._fallback_text("API 暂时不可用")
-            else:
-                try:
-                    result = self._call_ollama_chat(messages, temperature)
-                except Exception:
-                    result = self._fallback_text("本地模型暂时不可用")
+            # Circuit Breaker 检查
+            if not self._check_circuit_breaker():
+                elapsed = time.monotonic() - start
+                span.set_attribute("duration_ms", round(elapsed * 1000, 1))
+                record_llm_latency(elapsed, model=self.model, api_type=self._detect_api_type())
+                return self._fallback_text("API 熔断中")
+
+            try:
+                fn = self._get_chat_fn()
+                result = self._with_retry(fn, messages, temperature, max_tokens)
+            except Exception:
+                result = self._fallback_text("API 暂时不可用")
 
             elapsed = time.monotonic() - start
             span.set_attribute("duration_ms", round(elapsed * 1000, 1))

@@ -9,15 +9,34 @@ knowledge_base.py — 知识库管理
 """
 
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_collection(vs_collection) -> dict:
+    """将后端返回的集合对象统一为 dict 格式
+
+    兼容 ChromaDB（返回 Chroma Collection 对象）和 Milvus（返回字符串或 None）。
+    """
+    if vs_collection is None:
+        return {"name": "", "metadata": {}, "count": lambda: 0}
+    if isinstance(vs_collection, str):
+        # Milvus 返回集合名称字符串 → 暂时无权获取元数据
+        return {"name": vs_collection, "metadata": {}, "count": lambda: 0}
+    # ChromaDB Collection 对象
+    return {
+        "name": getattr(vs_collection, "name", ""),
+        "metadata": getattr(vs_collection, "metadata", {}) or {},
+        "count": lambda: getattr(vs_collection, "count", lambda: 0)(),
+    }
 
 
 class KnowledgeBase:
     """知识库管理
 
-    通过 VectorStore 的操作实现集合/标签/版本管理，
-    不引入新存储后端。
+    通过 VectorStore/MilvusStore 的操作实现集合/标签/版本管理，
+    不绑定特定后端。
     """
 
     # ── 集合管理 ──────────────────────────────────────
@@ -29,11 +48,12 @@ class KnowledgeBase:
             collections = vector_store.list_collections()
             result = []
             for col in collections:
-                meta = col.metadata or {}
+                col_info = _normalize_collection(col)
+                meta = col_info["metadata"]
                 result.append(
                     {
-                        "name": col.name,
-                        "chunk_count": col.count() if hasattr(col, "count") else None,
+                        "name": col_info["name"],
+                        "chunk_count": col_info["count"](),
                         "version": meta.get("version", 1),
                         "tags": meta.get("tags", []),
                         "created_at": meta.get("created_at", ""),
@@ -52,10 +72,11 @@ class KnowledgeBase:
             col = vector_store.get_collection(name)
             if col is None:
                 return None
-            meta = col.metadata or {}
+            col_info = _normalize_collection(col)
+            meta = col_info["metadata"]
             return {
-                "name": col.name,
-                "chunk_count": col.count() if hasattr(col, "count") else None,
+                "name": col_info["name"],
+                "chunk_count": col_info["count"](),
                 "version": meta.get("version", 1),
                 "tags": meta.get("tags", []),
                 "created_at": meta.get("created_at", ""),
@@ -84,8 +105,6 @@ class KnowledgeBase:
         Returns:
             集合信息 dict
         """
-        from datetime import datetime
-
         meta = {
             "version": 1,
             "tags": tags or [],
@@ -97,9 +116,10 @@ class KnowledgeBase:
 
         try:
             col = vector_store.create_collection(name, metadata=meta)
+            col_info = _normalize_collection(col)
             logger.info(f"📚 创建集合: {name} (tags={tags})")
             return {
-                "name": col.name,
+                "name": col_info["name"],
                 "chunk_count": 0,
                 "version": 1,
                 "tags": tags or [],
@@ -135,7 +155,8 @@ class KnowledgeBase:
             col = vector_store.get_collection(collection_name)
             if col is None:
                 return 1
-            meta = dict(col.metadata or {})
+            col_info = _normalize_collection(col)
+            meta = dict(col_info["metadata"])
             version = meta.get("version", 0) + 1
             meta["version"] = version
             meta["updated_at"] = datetime.now().isoformat()

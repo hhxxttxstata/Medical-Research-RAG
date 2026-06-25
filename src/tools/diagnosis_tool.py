@@ -9,7 +9,7 @@ import os
 import sys
 from typing import Any
 
-from .base import Tool
+from .base import Tool, ToolPolicy
 
 # 延迟导入（避免循环导入）
 # 在需要的地方 from ..diagnosis import CTPADiagnosisModel, create_diagnosis_model
@@ -117,6 +117,11 @@ class DiagnosisTool(Tool):
 
     name = "diagnose_pulmonary_embolism"
     description = "调用肺栓塞 AI 诊断模型，对 CTPA 影像进行风险预测。输入为 NIfTI 格式 (.nii/.nii.gz) 的 CT 肺动脉造影影像，输出肺栓塞概率和风险等级"
+    policy = ToolPolicy(
+        access_level="confirm",
+        rate_limit=10,
+        require_reason=True,
+    )
 
     def __init__(self, model=None):
         super().__init__()

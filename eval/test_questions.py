@@ -9,6 +9,7 @@
 """
 
 import json
+import os
 from typing import Any
 
 # ── 内建测试问题集 ──────────────────────────────────
@@ -179,7 +180,18 @@ BUILTIN_QUESTIONS = [
 
 
 def get_test_questions() -> list[dict[str, Any]]:
-    """获取默认测试问题集"""
+    """获取默认测试问题集
+
+    优先从 tests/test_questions.json 加载（Golden 数据集），
+    不存在时回退到内建常量（保持向后兼容）。
+    """
+    json_path = os.path.join(os.path.dirname(__file__), "..", "tests", "test_questions.json")
+    if os.path.isfile(json_path):
+        try:
+            with open(json_path, encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
     return list(BUILTIN_QUESTIONS)
 
 

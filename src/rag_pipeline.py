@@ -24,7 +24,18 @@ from .monitoring.metrics import record_kb_size, record_request
 from .monitoring.tracing import get_current_span_id, get_current_trace_id, get_tracer
 from .retriever import HybridRetriever, Retriever
 from .text_splitter import split_document
-from .vector_store import VectorStore
+from .vector_store import VectorStore, create_vector_store
+
+
+def _detect_embedding_dim(embedding_provider) -> int:
+    """通过一次 warmup 推理获取 embedding 向量维度"""
+    try:
+        emb = embedding_provider.embed(["warmup"])
+        if emb and len(emb) > 0:
+            return len(emb[0])
+    except Exception:
+        pass
+    return 768  # 回退默认维度
 
 
 class RAGPipeline:
@@ -41,9 +52,15 @@ class RAGPipeline:
         chunk_max_chars: int = 500,
         retriever_mode: str = "hybrid",
         enable_rewrite: bool = True,
-        enable_reranker: bool = False,
+        enable_reranker: bool = True,
         reranker=None,  # CrossEncoderReranker 实例
         cache_manager=None,  # CacheManager 实例
+        bm25_backend: str = "memory",  # "memory" | "lucene" — BM25 后端
+        bm25_index_dir: str = "lucene_bm25_index",  # Lucene BM25 索引目录
+        vector_backend: str = "chroma",  # "chroma" | "milvus" — 向量后端
+        milvus_host: str = "localhost",
+        milvus_port: str = "19530",
+        milvus_lite: bool = False,
     ):
         self.data_dir = os.path.abspath(data_dir)
         self.persist_dir = os.path.abspath(persist_dir)
@@ -53,13 +70,27 @@ class RAGPipeline:
         self.retriever_mode = retriever_mode
         self._reranker = reranker
         self._cache = cache_manager
+        self._bm25_backend = bm25_backend
+        self._bm25_index_dir = bm25_index_dir
 
         # 根据 chunk size 确定集合名称
         collection_name = f"rag_docs_c{chunk_min_chars}_{chunk_max_chars}"
 
         # 初始化各组件
         self.embedding_provider = get_embedding_provider(embedding_provider, embedding_model)
-        self.vector_store = VectorStore(persist_dir=persist_dir, collection_name=collection_name)
+
+        # 根据 vector_backend 选择向量存储
+        if vector_backend == "milvus":
+            self.vector_store = create_vector_store(
+                backend="milvus",
+                collection_name=collection_name,
+                dim=_detect_embedding_dim(self.embedding_provider),
+                host=milvus_host,
+                port=milvus_port,
+                use_lite=milvus_lite,
+            )
+        else:
+            self.vector_store = VectorStore(persist_dir=persist_dir, collection_name=collection_name)
 
         self.generator = create_generator()
         self.logger = get_logger()
@@ -74,6 +105,8 @@ class RAGPipeline:
                 enable_rewrite=enable_rewrite,
                 enable_reranker=enable_reranker,
                 reranker=reranker,
+                bm25_backend=bm25_backend,
+                bm25_index_dir=bm25_index_dir,
             )
         else:
             self.retriever = Retriever(

@@ -1,0 +1,958 @@
+[
+  {
+    "id": "exact_01",
+    "question": "Transformer在医学影像分析中有哪些应用？",
+    "category": "exact_match",
+    "expected_doc": "06_Transformer在医学影像中的应用.md",
+    "difficulty": "easy",
+    "expected_answer_keywords": [
+      "Transformer",
+      "医学影像",
+      "注意力机制"
+    ]
+  },
+  {
+    "id": "exact_02",
+    "question": "CT影像肺结节的检测流程是怎样的？",
+    "category": "exact_match",
+    "expected_doc": "02_CT影像肺结节检测技术方案.md",
+    "difficulty": "easy",
+    "expected_answer_keywords": [
+      "肺结节",
+      "CT",
+      "检测"
+    ]
+  },
+  {
+    "id": "exact_03",
+    "question": "U-Net网络的核心创新是什么？",
+    "category": "exact_match",
+    "expected_doc": "03_U-Net医学图像分割论文笔记.md",
+    "difficulty": "easy",
+    "expected_answer_keywords": [
+      "U-Net",
+      "编码器",
+      "解码器"
+    ]
+  },
+  {
+    "id": "exact_04",
+    "question": "公司数据安全的L3级别数据包括哪些？",
+    "category": "exact_match",
+    "expected_doc": "05_企业数据安全管理制度.md",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "L3",
+      "数据安全",
+      "级别"
+    ]
+  },
+  {
+    "id": "exact_05",
+    "question": "CTPA上如何区分急性和慢性肺栓塞？",
+    "category": "exact_match",
+    "expected_doc": "PE的病理分型：急性 vs. 慢性.md",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "急性",
+      "慢性",
+      "CTPA"
+    ]
+  },
+  {
+    "id": "exact_06",
+    "question": "肺栓塞CTPA的直接征象有哪些？",
+    "category": "exact_match",
+    "expected_doc": "CTPA影像表现：从直接到间接.md",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "直接征象",
+      "CTPA",
+      "充盈缺损"
+    ]
+  },
+  {
+    "id": "exact_07",
+    "question": "sPESI评分包含哪些评估项目？",
+    "category": "exact_match",
+    "expected_doc": "临床危险分层：理解sPESI评分.md",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "sPESI",
+      "评分",
+      "危险分层"
+    ]
+  },
+  {
+    "id": "exact_08",
+    "question": "D-二聚体在肺栓塞诊断中的年龄校正临界值是什么？",
+    "category": "exact_match",
+    "expected_doc": "诊断流程指南：从怀疑到确诊.md",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "D-二聚体",
+      "年龄",
+      "临界值"
+    ]
+  },
+  {
+    "id": "exact_09",
+    "question": "急性肺栓塞导致右心功能改变的病理机制是什么？",
+    "category": "exact_match",
+    "expected_doc": "PE的病理分型：急性 vs. 慢性.md",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "右心",
+      "病理",
+      "肺栓塞"
+    ]
+  },
+  {
+    "id": "exact_10",
+    "question": "YEARS模型在肺栓塞诊断中如何应用？",
+    "category": "exact_match",
+    "expected_doc": "诊断流程指南：从怀疑到确诊.md",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "YEARS",
+      "肺栓塞",
+      "诊断"
+    ]
+  },
+  {
+    "id": "exact_11",
+    "question": "医学影像AI系统的核心功能模块包括哪些？",
+    "category": "exact_match",
+    "expected_doc": "01_医学影像AI系统概述.md",
+    "difficulty": "easy",
+    "expected_answer_keywords": [
+      "预处理",
+      "检测",
+      "分割",
+      "分类"
+    ]
+  },
+  {
+    "id": "exact_12",
+    "question": "LUNA16数据集包含多少例CT扫描图像？",
+    "category": "exact_match",
+    "expected_doc": "02_CT影像肺结节检测技术方案.md",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "LUNA16",
+      "888",
+      "CT"
+    ]
+  },
+  {
+    "id": "exact_13",
+    "question": "U-Net的跳跃连接解决了传统分割网络的什么问题？",
+    "category": "exact_match",
+    "expected_doc": "03_U-Net医学图像分割论文笔记.md",
+    "difficulty": "easy",
+    "expected_answer_keywords": [
+      "跳跃连接",
+      "空间位置信息",
+      "编码器",
+      "解码器"
+    ]
+  },
+  {
+    "id": "exact_14",
+    "question": "系统部署运维手册中对GPU显存的最低要求是多少？",
+    "category": "exact_match",
+    "expected_doc": "04_系统部署运维手册.md",
+    "difficulty": "easy",
+    "expected_answer_keywords": [
+      "GPU",
+      "显存",
+      "24GB",
+      "A100"
+    ]
+  },
+  {
+    "id": "exact_15",
+    "question": "L3级数据的备份频率和保留时间分别是多少？",
+    "category": "exact_match",
+    "expected_doc": "05_企业数据安全管理制度.md",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "L3",
+      "每日",
+      "备份",
+      "90天"
+    ]
+  },
+  {
+    "id": "exact_16",
+    "question": "Vision Transformer如何将图像转换为模型可处理的输入序列？",
+    "category": "exact_match",
+    "expected_doc": "06_Transformer在医学影像中的应用.md",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "patch",
+      "线性投影",
+      "位置编码",
+      "序列"
+    ]
+  },
+  {
+    "id": "exact_17",
+    "question": "远程办公期间员工的工作时间和在线要求是什么？",
+    "category": "exact_match",
+    "expected_doc": "07_员工远程办公管理规定.md",
+    "difficulty": "easy",
+    "expected_answer_keywords": [
+      "9:00",
+      "18:00",
+      "企业微信",
+      "在线"
+    ]
+  },
+  {
+    "id": "exact_18",
+    "question": "AI模型在外部验证集上的AUC指标是多少？",
+    "category": "exact_match",
+    "expected_doc": "08_AI模型评估与验证报告.md",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "外部验证",
+      "AUC",
+      "0.953"
+    ]
+  },
+  {
+    "id": "exact_19",
+    "question": "医学影像AI系统支持哪些影像浏览操作？",
+    "category": "exact_match",
+    "expected_doc": "09_产品用户手册.md",
+    "difficulty": "easy",
+    "expected_answer_keywords": [
+      "窗宽窗位",
+      "缩放",
+      "平移",
+      "序列切换"
+    ]
+  },
+  {
+    "id": "exact_20",
+    "question": "RAG系统的文档处理管道包含哪些关键步骤？",
+    "category": "exact_match",
+    "expected_doc": "10_RAG系统技术架构文档.md",
+    "difficulty": "easy",
+    "expected_answer_keywords": [
+      "文档解析",
+      "文本切分",
+      "向量化",
+      "Embedding"
+    ]
+  },
+  {
+    "id": "exact_21",
+    "question": "医学图像标注的三级审核流程（初标、复核、终审）各由谁完成？",
+    "category": "exact_match",
+    "expected_doc": "11_医学图像数据标注规范.md",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "初标",
+      "复核",
+      "终审",
+      "抽检"
+    ]
+  },
+  {
+    "id": "exact_22",
+    "question": "使用conda创建深度学习虚拟环境的完整命令是什么？",
+    "category": "exact_match",
+    "expected_doc": "12_深度学习环境配置指南.md",
+    "difficulty": "easy",
+    "expected_answer_keywords": [
+      "conda",
+      "create",
+      "环境",
+      "python"
+    ]
+  },
+  {
+    "id": "exact_23",
+    "question": "企业AI伦理的'以人为本'原则在医学影像场景中如何体现？",
+    "category": "exact_match",
+    "expected_doc": "13_企业AI伦理与合规指南.md",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "以人为本",
+      "辅助工具",
+      "诊断权",
+      "医生"
+    ]
+  },
+  {
+    "id": "exact_24",
+    "question": "Scaled Dot-Product Attention中除以sqrt(d_k)的目的是什么？",
+    "category": "exact_match",
+    "expected_doc": "14_Attention机制论文笔记.md",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "sqrt(d_k)",
+      "softmax",
+      "梯度消失",
+      "点积"
+    ]
+  },
+  {
+    "id": "exact_25",
+    "question": "Python项目中函数参数和返回值必须添加什么？",
+    "category": "exact_match",
+    "expected_doc": "15_项目开发规范与代码风格指南.md",
+    "difficulty": "easy",
+    "expected_answer_keywords": [
+      "类型注解",
+      "参数",
+      "返回值"
+    ]
+  },
+  {
+    "id": "exact_26",
+    "question": "RAG系统首次运行时需要下载的Embedding模型大约多大？",
+    "category": "exact_match",
+    "expected_doc": "16_RAG系统部署说明.txt",
+    "difficulty": "easy",
+    "expected_answer_keywords": [
+      "500MB",
+      "Embedding",
+      "下载",
+      "模型"
+    ]
+  },
+  {
+    "id": "exact_27",
+    "question": "RAG系统API的流式查询使用什么技术实现逐字输出？",
+    "category": "exact_match",
+    "expected_doc": "17_API接口设计文档.txt",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "SSE",
+      "流式",
+      "Server-Sent",
+      "token"
+    ]
+  },
+  {
+    "id": "exact_28",
+    "question": "CT图像中肺窗的典型窗宽和窗位设置是多少？",
+    "category": "exact_match",
+    "expected_doc": "CT 窗宽窗位设置原理.txt",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "肺窗",
+      "窗宽",
+      "窗位",
+      "HU"
+    ]
+  },
+  {
+    "id": "exact_29",
+    "question": "DICOM原始像素值转换为HU值的线性变换公式中使用哪两个关键标签？",
+    "category": "exact_match",
+    "expected_doc": "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理.txt",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "Rescale Slope",
+      "Rescale Intercept",
+      "HU",
+      "线性变换"
+    ]
+  },
+  {
+    "id": "exact_30",
+    "question": "CTPA影像中慢性血栓的'蹼样征'有什么形态特征？",
+    "category": "exact_match",
+    "expected_doc": "CTPA影像表现：从直接到间接.md",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "蹼样征",
+      "慢性",
+      "纤维",
+      "偏心性"
+    ]
+  },
+  {
+    "id": "exact_31",
+    "question": "急性肺栓塞导致的通气/灌注不匹配如何引起低氧血症？",
+    "category": "exact_match",
+    "expected_doc": "PE的病理分型：急性 vs. 慢性.md",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "V/Q",
+      "不匹配",
+      "低氧血症",
+      "灌注"
+    ]
+  },
+  {
+    "id": "exact_32",
+    "question": "sPESI评分为0分的患者30天死亡风险约为多少？",
+    "category": "exact_match",
+    "expected_doc": "临床危险分层：理解sPESI评分.md",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "sPESI",
+      "0分",
+      "低危",
+      "死亡率"
+    ]
+  },
+  {
+    "id": "exact_33",
+    "question": "大于50岁患者如何使用年龄校正公式计算D-二聚体临界值？",
+    "category": "exact_match",
+    "expected_doc": "诊断流程指南：从怀疑到确诊.md",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "年龄",
+      "D-二聚体",
+      "临界值",
+      "校正"
+    ]
+  },
+  {
+    "id": "exact_34",
+    "question": "肺结节检测模型训练中使用什么损失函数解决正负样本不平衡？",
+    "category": "exact_match",
+    "expected_doc": "02_CT影像肺结节检测技术方案.md",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "Focal Loss",
+      "正负样本",
+      "不平衡",
+      "微调"
+    ]
+  },
+  {
+    "id": "exact_35",
+    "question": "Transformer中多头注意力机制允许模型在什么空间中关注信息？",
+    "category": "exact_match",
+    "expected_doc": "14_Attention机制论文笔记.md",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "多头注意力",
+      "子空间",
+      "线性投影",
+      "拼接"
+    ]
+  },
+  {
+    "id": "exact_36",
+    "question": "体素重采样中三线性插值和最近邻插值各有什么优缺点？",
+    "category": "exact_match",
+    "expected_doc": "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理.txt",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "三线性插值",
+      "最近邻",
+      "重采样",
+      "平滑"
+    ]
+  },
+  {
+    "id": "exact_37",
+    "question": "U-Net论文中采用了哪些数据增强策略来应对标注数据有限的问题？",
+    "category": "exact_match",
+    "expected_doc": "03_U-Net医学图像分割论文笔记.md",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "弹性形变",
+      "旋转",
+      "数据增强",
+      "泛化"
+    ]
+  },
+  {
+    "id": "exact_38",
+    "question": "AI模型在使用FGSM对抗攻击测试时，epsilon=0.01导致准确率下降到多少？",
+    "category": "exact_match",
+    "expected_doc": "08_AI模型评估与验证报告.md",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "对抗攻击",
+      "FGSM",
+      "72%",
+      "epsilon"
+    ]
+  },
+  {
+    "id": "exact_39",
+    "question": "RAG系统架构支持哪些向量数据库的替换方案？",
+    "category": "exact_match",
+    "expected_doc": "10_RAG系统技术架构文档.md",
+    "difficulty": "easy",
+    "expected_answer_keywords": [
+      "Chroma",
+      "FAISS",
+      "Milvus",
+      "向量数据库"
+    ]
+  },
+  {
+    "id": "exact_40",
+    "question": "企业数据安全管理中，双因素认证适用于哪个安全级别的数据？",
+    "category": "exact_match",
+    "expected_doc": "05_企业数据安全管理制度.md",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "双因素认证",
+      "L3",
+      "访问控制",
+      "敏感"
+    ]
+  },
+  {
+    "id": "cross_01",
+    "question": "医学影像AI系统的技术栈包括哪些？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "深度学习",
+      "影像",
+      "模型"
+    ]
+  },
+  {
+    "id": "cross_02",
+    "question": "肺结节检测使用哪些深度学习模型？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "肺结节",
+      "检测",
+      "CNN"
+    ]
+  },
+  {
+    "id": "cross_03",
+    "question": "肺栓塞的诊断流程是怎样的？从临床评估到影像确诊。",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "诊断",
+      "CTPA",
+      "临床评估"
+    ]
+  },
+  {
+    "id": "cross_04",
+    "question": "肺栓塞如何根据危险分层选择治疗方案？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "危险分层",
+      "治疗",
+      "抗凝"
+    ]
+  },
+  {
+    "id": "cross_05",
+    "question": "CTPA影像上如何全面评估肺栓塞的严重程度？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "CTPA",
+      "严重程度",
+      "栓塞"
+    ]
+  },
+  {
+    "id": "cross_06",
+    "question": "从临床评估、D-二聚体检测到CTPA确诊，肺栓塞的完整诊断路径包括哪些步骤？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "诊断",
+      "D-二聚体",
+      "CTPA",
+      "临床评估"
+    ]
+  },
+  {
+    "id": "cross_07",
+    "question": "如何综合sPESI评分和血流动力学状态对肺栓塞患者进行危险分层？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "sPESI",
+      "血流动力学",
+      "危险分层",
+      "死亡率"
+    ]
+  },
+  {
+    "id": "cross_08",
+    "question": "深度学习模型从数据预处理、训练到Docker容器化部署的完整流程是什么？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "预处理",
+      "训练",
+      "部署",
+      "Docker"
+    ]
+  },
+  {
+    "id": "cross_09",
+    "question": "CT影像的窗宽窗位设置与AI模型中的HU值归一化有什么关系？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "窗宽",
+      "窗位",
+      "HU",
+      "归一化"
+    ]
+  },
+  {
+    "id": "cross_10",
+    "question": "U-Net和TransUNet在医学图像分割任务中各有什么优势和局限？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "U-Net",
+      "Transformer",
+      "分割",
+      "跳跃连接"
+    ]
+  },
+  {
+    "id": "cross_11",
+    "question": "企业AI系统中患者数据的隐私保护和合规要求包括哪些方面？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "隐私",
+      "加密",
+      "去标识化",
+      "合规"
+    ]
+  },
+  {
+    "id": "cross_12",
+    "question": "RAG系统的检索增强生成架构与医学影像AI的微服务架构在设计理念上有何异同？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "RAG",
+      "微服务",
+      "检索",
+      "FastAPI"
+    ]
+  },
+  {
+    "id": "cross_13",
+    "question": "在CTPA影像上如何通过直接征象和间接征象综合区分急性和慢性肺栓塞？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "CTPA",
+      "急性",
+      "慢性",
+      "充盈缺损",
+      "蹼样征"
+    ]
+  },
+  {
+    "id": "cross_14",
+    "question": "医学图像标注的质量控制流程有哪些环节？标注质量如何影响AI模型性能？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "标注",
+      "质量控制",
+      "Kappa",
+      "复核"
+    ]
+  },
+  {
+    "id": "cross_15",
+    "question": "从DICOM原始数据到深度学习模型可用的NIfTI格式，需要经过哪些处理步骤？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "DICOM",
+      "HU",
+      "重采样",
+      "NIfTI"
+    ]
+  },
+  {
+    "id": "cross_16",
+    "question": "AI辅助诊断系统在临床部署前需要满足哪些性能指标和合规审批要求？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "敏感度",
+      "特异度",
+      "NMPA",
+      "审批"
+    ]
+  },
+  {
+    "id": "cross_17",
+    "question": "远程办公场景下如何通过VPN、加密和访问控制保障企业数据安全？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "VPN",
+      "加密",
+      "远程办公",
+      "数据安全"
+    ]
+  },
+  {
+    "id": "cross_18",
+    "question": "医学影像AI系统的Docker容器化部署涉及哪些服务组件和监控指标？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "Docker",
+      "GPU",
+      "Prometheus",
+      "监控"
+    ]
+  },
+  {
+    "id": "cross_19",
+    "question": "sPESI临床评分和CTPA影像检查在肺栓塞诊断评估中各自承担什么角色？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "sPESI",
+      "CTPA",
+      "诊断",
+      "危险分层"
+    ]
+  },
+  {
+    "id": "cross_20",
+    "question": "Attention机制从NLP领域迁移到医学影像分析面临哪些挑战和限制？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "Attention",
+      "医学影像",
+      "计算复杂度",
+      "数据需求"
+    ]
+  },
+  {
+    "id": "cross_21",
+    "question": "RAG系统中混合检索（向量检索+BM25）相比单一检索策略有什么优势？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "混合检索",
+      "BM25",
+      "向量检索",
+      "互补"
+    ]
+  },
+  {
+    "id": "cross_22",
+    "question": "医学影像AI模型的评估需要覆盖哪些维度？如何验证跨设备和跨人群的泛化能力？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "评估",
+      "泛化",
+      "跨设备",
+      "AUC"
+    ]
+  },
+  {
+    "id": "cross_23",
+    "question": "NIfTI格式相比DICOM在AI工作流中有何优势？体素重采样的目的是什么？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "NIfTI",
+      "DICOM",
+      "重采样",
+      "空间标准化"
+    ]
+  },
+  {
+    "id": "cross_24",
+    "question": "AI伦理指南要求在临床场景中如何平衡模型性能与可解释性？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "medium",
+    "expected_answer_keywords": [
+      "可解释性",
+      "伦理",
+      "热力图",
+      "诊断"
+    ]
+  },
+  {
+    "id": "cross_25",
+    "question": "在肺栓塞智能诊断系统中，RAG知识库检索和深度学习影像模型如何协同工作？",
+    "category": "cross_doc",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": [
+      "RAG",
+      "深度学习",
+      "肺栓塞",
+      "CTPA"
+    ]
+  },
+  {
+    "id": "ood_01",
+    "question": "2025年全球经济增长率是多少？",
+    "category": "out_of_knowledge",
+    "expected_doc": "",
+    "difficulty": "easy",
+    "expected_answer_keywords": []
+  },
+  {
+    "id": "ood_02",
+    "question": "如何配置Kubernetes集群的RBAC权限？",
+    "category": "out_of_knowledge",
+    "expected_doc": "",
+    "difficulty": "easy",
+    "expected_answer_keywords": []
+  },
+  {
+    "id": "ood_03",
+    "question": "Python中如何使用async/await进行异步编程？",
+    "category": "out_of_knowledge",
+    "expected_doc": "",
+    "difficulty": "medium",
+    "expected_answer_keywords": []
+  },
+  {
+    "id": "ood_04",
+    "question": "React 18的主要新特性有哪些？",
+    "category": "out_of_knowledge",
+    "expected_doc": "",
+    "difficulty": "medium",
+    "expected_answer_keywords": []
+  },
+  {
+    "id": "ood_05",
+    "question": "COVID-19对心血管系统有哪些长期影响？",
+    "category": "out_of_knowledge",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": []
+  },
+  {
+    "id": "ood_06",
+    "question": "糖尿病肾病患者的血压控制目标是多少？",
+    "category": "out_of_knowledge",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": []
+  },
+  {
+    "id": "ood_07",
+    "question": "2024年诺贝尔物理学奖颁给了哪个研究领域？",
+    "category": "out_of_knowledge",
+    "expected_doc": "",
+    "difficulty": "easy",
+    "expected_answer_keywords": []
+  },
+  {
+    "id": "ood_08",
+    "question": "如何在AWS上通过CloudFormation部署无服务器应用？",
+    "category": "out_of_knowledge",
+    "expected_doc": "",
+    "difficulty": "easy",
+    "expected_answer_keywords": []
+  },
+  {
+    "id": "ood_09",
+    "question": "React中useEffect和useLayoutEffect的执行时机有什么区别？",
+    "category": "out_of_knowledge",
+    "expected_doc": "",
+    "difficulty": "medium",
+    "expected_answer_keywords": []
+  },
+  {
+    "id": "ood_10",
+    "question": "Golang的goroutine调度器采用什么调度模型？",
+    "category": "out_of_knowledge",
+    "expected_doc": "",
+    "difficulty": "medium",
+    "expected_answer_keywords": []
+  },
+  {
+    "id": "ood_11",
+    "question": "量子计算中如何通过量子纠错码解决退相干问题？",
+    "category": "out_of_knowledge",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": []
+  },
+  {
+    "id": "ood_12",
+    "question": "宋代科举制度中殿试和会试的考试内容分别是什么？",
+    "category": "out_of_knowledge",
+    "expected_doc": "",
+    "difficulty": "medium",
+    "expected_answer_keywords": []
+  },
+  {
+    "id": "ood_13",
+    "question": "电动车锂电池的充放电循环寿命由哪些因素决定？",
+    "category": "out_of_knowledge",
+    "expected_doc": "",
+    "difficulty": "medium",
+    "expected_answer_keywords": []
+  },
+  {
+    "id": "ood_14",
+    "question": "非洲猪瘟病毒的传播途径和主要防控措施有哪些？",
+    "category": "out_of_knowledge",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": []
+  },
+  {
+    "id": "ood_15",
+    "question": "日语的敬语体系分为哪几种类型？",
+    "category": "out_of_knowledge",
+    "expected_doc": "",
+    "difficulty": "easy",
+    "expected_answer_keywords": []
+  },
+  {
+    "id": "ood_16",
+    "question": "区块链共识机制中PoW和PoS在安全性和能耗方面各有什么优劣？",
+    "category": "out_of_knowledge",
+    "expected_doc": "",
+    "difficulty": "hard",
+    "expected_answer_keywords": []
+  }
+]

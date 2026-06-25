@@ -25,10 +25,17 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExport
 _tracer: trace.Tracer | None = None
 
 
-def init_tracing(service_name: str = "pe-rag-system") -> None:
-    """初始化 OpenTelemetry TracerProvider，设置 ConsoleSpanExporter
+def init_tracing(service_name: str = "pe-rag-system", silent: bool = False) -> None:
+    """初始化 OpenTelemetry TracerProvider
+
+    Args:
+        service_name: 服务名称，用于区分 Trace 来源
+        silent: 是否静默初始化（True=不输出 span 到终端，适合 CLI 模式）
 
     可在不同入口点重复调用（幂等），不会覆盖已初始化的 provider。
+
+    silent=True 时跳过 ConsoleSpanExporter，CLI 模式下不会被 JSON 日志刷屏。
+    生产环境通过环境变量 OTLP_ENDPOINT 接入 OTLP 导出器替换 ConsoleSpanExporter。
     """
     global _tracer
 
@@ -36,9 +43,10 @@ def init_tracing(service_name: str = "pe-rag-system") -> None:
     # 检查是否已经初始化（避免重复添加 processor）
     if not hasattr(provider, "_initialized"):
         provider = TracerProvider()
-        exporter = ConsoleSpanExporter()
-        processor = BatchSpanProcessor(exporter)
-        provider.add_span_processor(processor)
+        if not silent:
+            exporter = ConsoleSpanExporter()
+            processor = BatchSpanProcessor(exporter)
+            provider.add_span_processor(processor)
         provider._initialized = True  # type: ignore[attr-defined]
         trace.set_tracer_provider(provider)
 
@@ -46,10 +54,10 @@ def init_tracing(service_name: str = "pe-rag-system") -> None:
 
 
 def get_tracer() -> trace.Tracer:
-    """获取模块级 tracer（未初始化时自动初始化）"""
+    """获取模块级 tracer（未初始化时自动初始化，静默模式避免 CLI 刷屏）"""
     global _tracer
     if _tracer is None:
-        init_tracing()
+        init_tracing(silent=True)
     return _tracer
 
 

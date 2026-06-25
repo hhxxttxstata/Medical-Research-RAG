@@ -44,3 +44,9 @@ slowapi>=0.1.9
 # 文件监听 + 缓存
 watchdog>=6.0.0
 redis>=5.0.0
+
+# Lucene-compatible BM25 (disk-based indexing, solves memory explosion)
+whoosh>=0.7.8
+
+# Milvus vector database (optional: Milvus Lite via pymilvus[milvus-lite])
+pymilvus>=2.4.0

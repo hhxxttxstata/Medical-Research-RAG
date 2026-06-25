@@ -1,6 +1,11 @@
 """
 向量数据库模块
-使用 Chroma 存储 Chunk 向量和元数据
+
+提供统一接口：
+  - ChromaStore（默认）— ChromaDB 持久化向量存储
+  - MilvusStore（可选）— Milvus 向量数据库
+
+通过 create_vector_store() 工厂函数切换后端。
 
 支持多集合、标签过滤、集合元数据。
 """
@@ -171,3 +176,49 @@ class VectorStore:
             return chunks
         except Exception:
             return []
+
+
+# ── 工厂函数 ─────────────────────────────────────────
+
+
+def create_vector_store(
+    backend: str = "milvus",
+    persist_dir: str = "chroma_db",
+    collection_name: str = "rag_docs",
+    dim: int = 768,
+    host: str = "localhost",
+    port: str = "19530",
+    use_lite: bool = False,
+    lite_db_path: str = "milvus_db",
+) -> Any:
+    """向量存储工厂函数
+
+    根据 backend 参数选择 ChromaDB 或 Milvus 后端。
+
+    Args:
+        backend: "chroma"（默认）或 "milvus"
+        persist_dir: ChromaDB 持久化目录
+        collection_name: 集合名称
+        dim: 向量维度（Milvus）
+        host: Milvus 服务地址
+        port: Milvus 服务端口
+        use_lite: 是否使用 Milvus Lite（嵌入式）
+        lite_db_path: Milvus Lite 数据目录
+
+    Returns:
+        VectorStore（ChromaDB）或 MilvusStore 实例
+    """
+    if backend == "milvus":
+        from .milvus_store import MilvusStore
+
+        return MilvusStore(
+            collection_name=collection_name,
+            dim=dim,
+            host=host,
+            port=port,
+            use_lite=use_lite,
+            lite_db_path=lite_db_path,
+        )
+
+    # 默认 ChromaDB
+    return VectorStore(persist_dir=persist_dir, collection_name=collection_name)
