@@ -13,7 +13,7 @@ import re
 from datetime import datetime
 from typing import Any
 
-from .base import Tool
+from .base import Tool, ToolPolicy
 
 
 class ReportGenerator(Tool):
@@ -28,6 +28,10 @@ class ReportGenerator(Tool):
 
     name = "generate_report"
     description = "根据资料和指定报告类型生成结构化报告（部署报告/问题排查报告/会议纪要）"
+    policy = ToolPolicy(
+        access_level="auto",
+        rate_limit=60,
+    )
 
     # ── 各报告类型的模板 ──────────────────────────────
 

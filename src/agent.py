@@ -17,16 +17,141 @@ Agent 模块 — LLM 驱动意图分类 + ReAct 循环
 import json
 import re
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
+from . import context_compressor
 from .memory import MemoryManager
-from .monitoring.metrics import record_agent_steps, record_request
+from .monitoring.metrics import record_agent_budget_reason, record_agent_steps, record_agent_token_usage, record_request
 
 # ── 可观测性 ────────────────────────────────────────
 from .monitoring.tracing import get_tracer
-from .tools.base import Tool
+from .tools.base import PolicyEnforcer, PolicyResult, Tool
 from .tools.diagnosis_tool import DiagnosisTool
 from .tools.report_generator import ReportGenerator
+
+# ════════════════════════════════════════════════════════════════
+#  零、Bounded Agent Loop — 四维预算追踪
+# ════════════════════════════════════════════════════════════════
+
+
+@dataclass
+class AgentBudget:
+    """Agent 资源预算阈值
+
+    四维限制（面试讲解）：
+      - 步数（白盒）：已做的每一步我们都能枚举
+      - Token（灰盒）：靠 tiktoken 估算，非精确
+      - 墙钟时间（黑盒）：只看真实世界过了多久
+      - 工具调用次数（白盒）：审计所有外部调用
+
+    默认值适用于医学 RAG 问答场景。对需要多步推理的诊断场景可放宽。
+    """
+
+    max_steps: int = 10
+    """最大推理步数"""
+    max_tokens_per_step: int = 4096
+    """单步 LLM 回复最大 Token 数"""
+    max_tokens_total: int = 16384
+    """会话累计 Token 上限"""
+    max_wall_clock_sec: float = 120.0
+    """墙钟时间上限（秒）"""
+    max_tool_calls: int = 20
+    """工具调用总次数上限"""
+
+
+class BudgetTracker:
+    """Bounded Agent Loop 预算跟踪器
+
+    在每步推理前后调用 check_* 方法，返回 None = 正常, 字符串 = 终止原因。
+
+    使用方式:
+        budget = AgentBudget(...)
+        tracker = BudgetTracker(budget)
+        for step in range(...):
+            reason = tracker.record_step(step_tokens)
+            if reason: return _build_result(success=False, termination_reason=reason)
+            reason = tracker.record_tool_call()
+            if reason: ...
+    """
+
+    def __init__(self, budget: AgentBudget | None = None):
+        self.budget = budget or AgentBudget()
+        self.reset()
+
+    def reset(self):
+        """重置所有计数器（开始新会话时调用）"""
+        self.step_count: int = 0
+        self.token_count: int = 0
+        self.tool_call_count: int = 0
+        self._start_time: float = time.monotonic()
+
+    # ── 检查方法 ────────────────────────────────────
+
+    def record_step(self, tokens: int = 0) -> str | None:
+        """记录一步，返回 None（正常）或终止原因（需停止）
+
+        Args:
+            tokens: 该步消耗的 Token 数（来自 LLM 响应）
+        """
+        self.step_count += 1
+        self.token_count += tokens
+
+        if self.step_count > self.budget.max_steps:
+            record_agent_budget_reason("步数超限")
+            return "达到最大推理步数"
+
+        if self.token_count > self.budget.max_tokens_total:
+            record_agent_budget_reason("Token预算超限")
+            return f"会话 Token 超限 ({self.token_count}>{self.budget.max_tokens_total})"
+
+        return None
+
+    def record_tool_call(self) -> str | None:
+        """记录一次工具调用，返回终止原因或 None"""
+        self.tool_call_count += 1
+        if self.tool_call_count > self.budget.max_tool_calls:
+            record_agent_budget_reason("工具调用次数超限")
+            return f"工具调用超限 ({self.tool_call_count}>{self.budget.max_tool_calls})"
+        return None
+
+    def check_wall_clock(self) -> str | None:
+        """检查墙钟时间是否超限"""
+        elapsed = time.monotonic() - self._start_time
+        if elapsed > self.budget.max_wall_clock_sec:
+            record_agent_budget_reason("超时")
+            return f"执行超时 ({elapsed:.1f}s>{self.budget.max_wall_clock_sec}s)"
+        return None
+
+    # ── Token 估算 ──────────────────────────────────
+
+    @staticmethod
+    def estimate_tokens(text: str) -> int:
+        """使用 tiktoken 估算字符串 Token 数
+
+        tiktoken 失败时回退到粗略估算（1 token ≈ 2 中文字符 或 4 英文字符）。
+        """
+        try:
+            import tiktoken
+
+            enc = tiktoken.get_encoding("cl100k_base")
+            return len(enc.encode(text))
+        except Exception:
+            # 回退：中文约 2 字/token，英文约 4 字/token
+            ascii_chars = sum(1 for c in text if ord(c) < 128)
+            non_ascii = len(text) - ascii_chars
+            return ascii_chars // 4 + non_ascii // 2 + 1
+
+    def finalize(self):
+        """会话结束时记录最终指标"""
+        record_agent_token_usage(self.token_count)
+
+    @property
+    def elapsed(self) -> float:
+        """已用墙钟时间"""
+        return time.monotonic() - self._start_time
+
 
 # ════════════════════════════════════════════════════════════════
 #  一、关键词意图分析器（保留做冷启动兜底）
@@ -346,59 +471,105 @@ class LLMIntentClassifier:
 
 
 # ════════════════════════════════════════════════════════════════
-#  三、Function Calling 循环（原生 OpenAI tools 支持）
+#  三、Agent Harness — 统一运行时配置 + 公共循环基类
 # ════════════════════════════════════════════════════════════════
 
-_FUNCTION_CALLING_SYSTEM_PROMPT = """\
-你是一个智能助手，通过 Function Calling 方式工作。你可以调用的工具已通过函数列表提供。
 
-## 可用命令
-除了注册的工具，你还可以使用内置的 **retrieve** 命令从知识库检索信息。
+@dataclass
+class AgentHarnessConfig:
+    """Agent 运行时统一配置
 
-## 工作方式
-1. 分析用户问题，判断是否需要调用工具
-2. 如果需要：返回 tool_calls（可以一次调用多个并行工具）
-3. 工具执行后你会收到结果，基于结果继续推理
-4. 如果不需要工具或信息已足够：直接输出最终回答文本
+    一次性注入 Budget / Compressor / Policy / HITL 等 Harness 层参数，
+    避免分散到 FunctionCallingLoop 和 ReActLoop 的 __init__ 中。
 
-## 规则
-- 最多 {max_steps} 轮工具调用
-- 如果同一操作重复多次得到相同结果，请停止并基于已有信息回答
-- 如果无法完成任务，诚实说明"""
-
-
-class FunctionCallingLoop:
-    """基于原生 OpenAI Function Calling 的 ReAct 循环
-
-    相比 ReActLoop（基于文本 Action/Action Input 正则解析）：
-      - 使用 API 原生的 tools 参数，LLM 返回结构化 tool_calls
-      - 支持并行工具调用（一次返回多个 tool_calls）
-      - 不需要用正则解析，格式由 API 保证
-      - API 不支持 Function Calling 时自动降级到 ReActLoop
-
-    终止条件（与 ReActLoop 一致）：
-      1. LLM 返回纯文本（无 tool_calls）→ 最终回答
-      2. 达到 MAX_STEPS → 超时终止
-      3. 死循环检测 → 连续 N 次相同操作
+    面试价值：
+      - 将所有 Harness 运行时配置集中管理 → 配置化而非硬编码
+      - 面试官看一眼就知道你的 Agent 有哪些"安全气囊"
+      - 新增策略时只需改一个 dataclass，不改循环代码
     """
 
-    MAX_STEPS = 10
+    max_steps: int = 10
+    """最大推理步数"""
+    max_tokens_total: int = 16384
+    """会话累计 Token 上限"""
+    max_wall_clock_sec: float = 120.0
+    """墙钟时间上限（秒）"""
+    max_tool_calls: int = 20
+    """工具调用总次数上限"""
+    dead_loop_threshold: int = 3
+    """连续重复操作触发死循环检测的阈值"""
+
+    # ── 上下文压缩 ──
+    enable_compression: bool = True
+    """是否启用对话上下文压缩"""
+
+    # ── 安全策略 ──
+    confirm_handler: Callable | None = None
+    """Human-in-the-Loop 确认回调（CLI 模式传入）"""
+
+    def to_budget(self) -> "AgentBudget":
+        """从此配置构建 AgentBudget 实例"""
+        return AgentBudget(
+            max_steps=self.max_steps,
+            max_tokens_total=self.max_tokens_total,
+            max_wall_clock_sec=self.max_wall_clock_sec,
+            max_tool_calls=self.max_tool_calls,
+        )
+
+
+class AgentLoopBase:
+    """Agent 消息循环的公共基类 — Harness 层
+
+    统一 FunctionCallingLoop 和 ReActLoop 的：
+      - 初始化（BudgetTracker / Compressor / PolicyEnforcer）
+      - 预算检查（墙钟检查、步数+Token、工具调用次数）
+      - 工具执行（_execute_action / _execute_retrieve / Policy 检查）
+      - 结果封装（_build_result — 统一返回格式）
+
+    子类只需实现：
+      - run()          — 具体的循环逻辑（FC vs ReAct 文本协议）
+      - _llm_step()    — 单步 LLM 推理（chat_with_tools vs chat）
+      - _handle_llm_response() — 处理 LLM 响应（tool_calls vs 文本解析）
+    """
+
     DEAD_LOOP_THRESHOLD = 3
 
     def __init__(
         self,
         tools: dict[str, "Tool"],
+        harness_config: AgentHarnessConfig | None = None,
         generator=None,
         rag_pipeline=None,
-        max_steps: int = MAX_STEPS,
     ):
         self.tools = tools
         self.generator = generator
         self.rag_pipeline = rag_pipeline
-        self.max_steps = max_steps
-        self._fc_supported: bool | None = None  # 缓存探测结果
+        self._config = harness_config or AgentHarnessConfig()
 
-    # ── 公共入口 ──────────────────────────────────────
+        # ── 预算控制 ──
+        self._budget = self._config.to_budget()
+        self.max_steps = self._config.max_steps
+        self._budget_tracker: BudgetTracker | None = None
+
+        # ── 安全策略 ──
+        self._policy_enforcer = PolicyEnforcer()
+        self.confirm_handler = self._config.confirm_handler
+
+        # ── 上下文压缩 ──
+        if self._config.enable_compression and generator:
+            self._compressor = context_compressor.ContextCompressor(
+                generator=generator,
+                token_budget=self._config.max_tokens_total,
+            )
+        else:
+            self._compressor = context_compressor.ContextCompressor(
+                generator=None,
+                token_budget=self._config.max_tokens_total,
+            )
+
+    # ════════════════════════════════════════════════════════
+    #  —— 子类必须实现 ——
+    # ════════════════════════════════════════════════════════
 
     def run(
         self,
@@ -406,150 +577,93 @@ class FunctionCallingLoop:
         context: dict[str, Any] | None = None,
         memory_context: str = "",
     ) -> dict[str, Any]:
-        """执行 Function Calling 循环
+        raise NotImplementedError
 
-        返回格式与 ReActLoop.run() 完全一致，保证 Agent 主流程无需改动。
+    # ════════════════════════════════════════════════════════
+    #  —— 预算检查（公共） ——
+    # ════════════════════════════════════════════════════════
 
-        Returns:
-            success, result, tool_result, steps, termination_reason, trace
-        """
-        context = context or {}
-        openai_tools = self._build_openai_tools()
+    def _init_budget(self) -> None:
+        """在每个 run() 开始时初始化 BudgetTracker"""
+        self._budget_tracker = BudgetTracker(self._budget)
 
-        # ── 探测 Function Calling 支持 ──
-        if not self._check_fc_support(openai_tools):
-            # 不支持 → 内部降级到 ReActLoop
-            fallback = ReActLoop(
-                tools=self.tools,
-                generator=self.generator,
-                rag_pipeline=self.rag_pipeline,
-                max_steps=self.max_steps,
-            )
-            return fallback.run(query, context=context, memory_context=memory_context)
+    def _check_wall_clock(self) -> str | None:
+        """墙钟检查 → 返回终止原因或 None"""
+        if self._budget_tracker:
+            return self._budget_tracker.check_wall_clock()
+        return None
 
-        # ── 初始化消息列表 ──
-        messages = [
-            {"role": "system", "content": self._build_system_prompt(memory_context)},
-            {"role": "user", "content": self._build_user_message(query, context)},
-        ]
+    def _record_step(self, tokens: int) -> str | None:
+        """步数 + Token 预算检查"""
+        if self._budget_tracker:
+            return self._budget_tracker.record_step(tokens)
+        return None
 
-        trace: list[dict[str, Any]] = []
-        dead_loop_window: list[tuple[str, str]] = []
-        last_tool_result: dict[str, Any] | None = None
+    def _record_tool_calls(self, count: int = 1) -> str | None:
+        """工具调用次数检查"""
+        if self._budget_tracker:
+            for _ in range(count):
+                reason = self._budget_tracker.record_tool_call()
+                if reason:
+                    return reason
+        return None
 
-        for step in range(1, self.max_steps + 1):
-            # ── 1. 调用 LLM（带 tools 参数） ──
-            response = self.generator.chat_with_tools(
-                messages=messages,
-                tools=openai_tools,
-                tool_choice="auto",
-                temperature=0.3,
-                max_tokens=2048,
-                parallel_tool_calls=True,
-            )
+    def _finalize_budget(self) -> None:
+        if self._budget_tracker:
+            self._budget_tracker.finalize()
 
-            # ── 2. 追加 assistant 消息（含 tool_calls，如果有） ──
-            assistant_msg: dict[str, Any] = {"role": "assistant", "content": response.content}
-            if response.tool_calls:
-                assistant_msg["tool_calls"] = response.tool_calls
-            messages.append(assistant_msg)
+    @staticmethod
+    def _build_user_message(query: str, context: dict[str, Any]) -> str:
+        """构建用户消息（公共）"""
+        extra = ""
+        if context.get("file_path"):
+            extra += f"\n用户已提供文件路径：{context['file_path']}"
+        if context.get("report_type"):
+            extra += f"\n用户指定报告类型：{context['report_type']}"
+        return f"用户问题：{query}{extra}"
 
-            trace.append(
-                {
-                    "step": step,
-                    "content": response.content,
-                    "tool_calls": [
-                        {"name": tc["function"]["name"], "args": tc["function"]["arguments"]}
-                        for tc in response.tool_calls
-                    ]
-                    if response.tool_calls
-                    else [],
-                }
-            )
+    # ════════════════════════════════════════════════════════
+    #  —— Channel 层：消息生命周期，可被 Tracing 包裹 ——
+    # ════════════════════════════════════════════════════════
 
-            # ── 3. LLM 选择直接回答（无 tool_calls）→ 最终答案 ──
-            if not response.tool_calls and response.content:
-                return self._build_result(
-                    True,
-                    response.content,
-                    step,
-                    "正常完成",
-                    trace,
-                    last_tool_result,
-                )
+    def _compress_observation(self, observation: str, tool_name: str = "") -> str:
+        """压缩工具输出"""
+        return self._compressor.compress_tool_result(observation, tool_name)
 
-            # ── 4. 执行所有 tool_calls（并行） ──
-            if response.tool_calls:
-                tool_results = self._execute_tool_calls(response.tool_calls, query, context)
+    def _compress_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """压缩对话历史"""
+        return self._compressor.compress_conversation(messages)
 
-                # 将每个结果以 tool role 追加
-                for tc, tr in zip(response.tool_calls, tool_results):
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tc["id"],
-                            "content": tr["observation"],
-                        }
-                    )
+    # ════════════════════════════════════════════════════════
+    #  —— 工具执行（公共） ——
+    # ════════════════════════════════════════════════════════
 
-                # 保存最新的结构化结果
-                for tr in tool_results:
-                    if tr.get("structured"):
-                        last_tool_result = tr["structured"]
+    def _execute_action(
+        self,
+        action: str,
+        action_input: Any,
+        query: str,
+        context: dict[str, Any],
+    ) -> str:
+        """执行工具调用或内置命令，返回 Observation 文本"""
+        # ── 内置命令：知识库检索 ──
+        if action == "retrieve":
+            return self._execute_retrieve(action_input, query)
 
-                # ── 5. 死循环检测 ──
-                sig_parts = [tc["function"]["name"] for tc in response.tool_calls]
-                obs_parts = [tr["observation"][:300] for tr in tool_results]
-                dead_loop_window.append(("|".join(sig_parts), "|".join(obs_parts)))
-                if len(dead_loop_window) >= self.DEAD_LOOP_THRESHOLD:
-                    recent = dead_loop_window[-self.DEAD_LOOP_THRESHOLD :]
-                    if all(h == recent[0] for h in recent):
-                        return self._build_result(
-                            False,
-                            "|".join(obs_parts),
-                            step,
-                            f"检测到死循环（连续{self.DEAD_LOOP_THRESHOLD}次相同操作）",
-                            trace,
-                            last_tool_result,
-                        )
+        # ── 注册工具 ──
+        if action in self.tools:
+            tool = self.tools[action]
+            params = action_input if isinstance(action_input, dict) else {}
+            for key in ("file_path",):
+                if key not in params and context.get(key):
+                    params[key] = context[key]
+            try:
+                result = tool.run(**params)
+                return json.dumps(result, ensure_ascii=False, default=str)[:12000]
+            except Exception as e:
+                return f"工具调用失败：{e}"
 
-        # ── 达到最大步数 ──
-        return self._build_result(
-            False,
-            "已达到最大推理步数，请简化问题或补充信息",
-            self.max_steps,
-            "达到最大步数限制",
-            trace,
-            last_tool_result,
-        )
-
-    # ── Function Calling 支持探测 ─────────────────────
-
-    def _check_fc_support(self, openai_tools: list[dict[str, Any]]) -> bool:
-        """探测后端 API 是否支持 Function Calling
-
-        发一条最小 probe 请求，tool_choice="none" 强制模型不调工具。
-        成功 → 支持；失败 → 降级到 ReActLoop。
-        结果缓存在 self._fc_supported，只探测一次。
-        """
-        if self._fc_supported is not None:
-            return self._fc_supported
-        if not self.generator or not openai_tools:
-            self._fc_supported = False
-            return False
-        try:
-            probe = self.generator.chat_with_tools(
-                messages=[{"role": "user", "content": "ping"}],
-                tools=openai_tools,
-                tool_choice="none",
-                max_tokens=10,
-            )
-            self._fc_supported = probe.content is not None or probe.finish_reason in ("stop",)
-        except Exception:
-            self._fc_supported = False
-        return self._fc_supported
-
-    # ── 工具执行（并行） ──────────────────────────────
+        return f"未知命令：{action}。可用工具：{list(self.tools.keys())}，内置命令：['retrieve']"
 
     def _execute_tool_calls(
         self,
@@ -557,14 +671,7 @@ class FunctionCallingLoop:
         query: str,
         context: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        """并行执行多个 tool_calls
-
-        用 ThreadPoolExecutor 执行 I/O-bound 的工具调用。
-        结果按 tool_calls 的顺序返回。
-
-        Returns:
-            [{"observation": str, "structured": dict|None}, ...]
-        """
+        """并行执行多个 tool_calls（Function Calling 路径用）"""
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         def execute_one(tc: dict[str, Any]) -> dict[str, Any]:
@@ -576,22 +683,19 @@ class FunctionCallingLoop:
             if not isinstance(args, dict):
                 args = {}
 
-            # 注入外部上下文参数
             for key in ("file_path",):
                 if key not in args and context.get(key):
                     args[key] = context[key]
 
-            # 内置命令：知识库检索
             if name == "retrieve":
                 obs = self._execute_retrieve(args, query)
                 return {"observation": obs, "structured": None}
 
-            # 注册工具
             if name in self.tools:
                 tool = self.tools[name]
                 try:
                     result = tool.run(**args)
-                    obs = json.dumps(result, ensure_ascii=False, default=str)[:3000]
+                    obs = json.dumps(result, ensure_ascii=False, default=str)[:12000]
                     return {"observation": obs, "structured": result}
                 except Exception as e:
                     return {"observation": f"工具调用失败：{e}", "structured": None}
@@ -612,70 +716,16 @@ class FunctionCallingLoop:
 
         return [r if r is not None else {"observation": "工具执行未返回结果", "structured": None} for r in results]
 
-    # ── 辅助方法 ──────────────────────────────────────
-
-    def _build_openai_tools(self) -> list[dict[str, Any]]:
-        """从注册工具构建 OpenAI 格式的 tools 列表
-
-        包含所有注册工具 + 内置 retrieve 命令。
-        """
-        tools = [tool.openai_tool_schema for tool in self.tools.values()]
-
-        # 内置：知识库检索
-        tools.append(
-            {
-                "type": "function",
-                "function": {
-                    "name": "retrieve",
-                    "description": "从知识库检索相关信息",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "搜索关键词",
-                            },
-                            "top_k": {
-                                "type": "integer",
-                                "description": "返回结果数量",
-                                "default": 5,
-                            },
-                        },
-                        "required": ["query"],
-                    },
-                },
-            }
-        )
-
-        return tools
-
-    def _build_system_prompt(self, memory_context: str = "") -> str:
-        """构建系统提示词
-
-        与 ReActLoop 不同，不把工具 Schema 内联进 prompt 文本，
-        而是由 API 的 tools 参数提供。prompt 只保留行为规则。
-        """
-        base = _FUNCTION_CALLING_SYSTEM_PROMPT.format(max_steps=self.max_steps)
-        if memory_context:
-            base += f"\n\n{memory_context}"
-        return base
-
-    @staticmethod
-    def _build_user_message(query: str, context: dict[str, Any]) -> str:
-        extra = ""
-        if context.get("file_path"):
-            extra += f"\n用户已提供文件路径：{context['file_path']}"
-        if context.get("report_type"):
-            extra += f"\n用户指定报告类型：{context['report_type']}"
-        return f"用户问题：{query}{extra}"
-
-    def _execute_retrieve(self, args: dict[str, Any], default_query: str) -> str:
-        """执行知识库检索（与 ReActLoop 逻辑一致）"""
+    def _execute_retrieve(self, action_input: Any, default_query: str) -> str:
+        """执行知识库检索（公共）"""
         if not self.rag_pipeline or not self.rag_pipeline.retriever:
             return "检索功能不可用（未连接知识库）"
 
-        q = args.get("query", default_query)
-        k = args.get("top_k", 5)
+        q = default_query
+        k = 5
+        if isinstance(action_input, dict):
+            q = action_input.get("query", default_query)
+            k = action_input.get("top_k", 5)
 
         try:
             chunks = self.rag_pipeline.retriever.retrieve(q, top_k=k)
@@ -690,6 +740,48 @@ class FunctionCallingLoop:
         except Exception as e:
             return f"检索出错：{e}"
 
+    # ════════════════════════════════════════════════════════
+    #  —— Policy 检查（公共） ——
+    # ════════════════════════════════════════════════════════
+
+    def _check_tool_policy(self, tool_name: str, reason: str = "") -> "PolicyResult | None":
+        """检查工具调用策略
+
+        Returns:
+            PolicyResult | None — None 表示 auto 放行，否则包含策略判定结果
+        """
+        if tool_name == "retrieve":
+            return None
+
+        tool = self.tools.get(tool_name)
+        if tool is None:
+            return None
+
+        policy = getattr(tool, "policy", None)
+        if policy is None:
+            return None
+
+        result = self._policy_enforcer.check(tool_name, policy, reason)
+        if result.level == "auto" and result.allowed:
+            return None
+
+        return result
+
+    @staticmethod
+    def _extract_reason(tc: dict[str, Any]) -> str:
+        """从 tool_call 的 arguments 中提取 'reason' 参数"""
+        try:
+            args = json.loads(tc["function"]["arguments"])
+            if isinstance(args, dict):
+                return args.get("reason", "")
+        except (json.JSONDecodeError, TypeError, KeyError):
+            pass
+        return ""
+
+    # ════════════════════════════════════════════════════════
+    #  —— 结果封装（公共） ——
+    # ════════════════════════════════════════════════════════
+
     @staticmethod
     def _build_result(
         success: bool,
@@ -699,7 +791,7 @@ class FunctionCallingLoop:
         trace: list[dict[str, Any]],
         tool_result: Any = None,
     ) -> dict[str, Any]:
-        """封装结果（与 ReActLoop 格式一致）"""
+        """统一返回格式"""
         return {
             "success": success,
             "result": result,
@@ -708,6 +800,295 @@ class FunctionCallingLoop:
             "termination_reason": reason,
             "trace": trace,
         }
+
+
+# ════════════════════════════════════════════════════════════════
+#  四、Function Calling 循环（原生 OpenAI tools 支持）
+# ════════════════════════════════════════════════════════════════
+
+_FUNCTION_CALLING_SYSTEM_PROMPT = """\
+你是一个智能助手，通过 Function Calling 方式工作。你可以调用的工具已通过函数列表提供。
+
+## 可用命令
+除了注册的工具，你还可以使用内置的 **retrieve** 命令从知识库检索信息。
+
+## 工作方式
+1. 分析用户问题，判断是否需要调用工具
+2. 如果需要：返回 tool_calls（可以一次调用多个并行工具）
+3. 工具执行后你会收到结果，基于结果继续推理
+4. 如果不需要工具或信息已足够：直接输出最终回答文本
+
+## 规则
+- 最多 {max_steps} 轮工具调用
+- 如果同一操作重复多次得到相同结果，请停止并基于已有信息回答
+- 如果无法完成任务，诚实说明"""
+
+
+class FunctionCallingLoop(AgentLoopBase):
+    """基于原生 OpenAI Function Calling 的 ReAct 循环
+
+    相比 ReActLoop（基于文本 Action/Action Input 正则解析）：
+      - 使用 API 原生的 tools 参数，LLM 返回结构化 tool_calls
+      - 支持并行工具调用（一次返回多个 tool_calls）
+      - 不需要用正则解析，格式由 API 保证
+      - API 不支持 Function Calling 时自动降级到 ReActLoop
+
+    终止条件（与 ReActLoop 一致）：
+      1. LLM 返回纯文本（无 tool_calls）→ 最终回答
+      2. 达到 MAX_STEPS → 超时终止
+      3. 死循环检测 → 连续 N 次相同操作
+      4. BudgetTracker → Token/墙钟/工具调用次数超限（新增）
+    """
+
+    def __init__(
+        self,
+        tools: dict[str, "Tool"],
+        generator=None,
+        rag_pipeline=None,
+        harness_config: AgentHarnessConfig | None = None,
+    ):
+        super().__init__(
+            tools=tools,
+            harness_config=harness_config,
+            generator=generator,
+            rag_pipeline=rag_pipeline,
+        )
+        self._fc_supported: bool | None = None  # 缓存探测结果
+
+    # ── 公共入口 ──────────────────────────────────────
+
+    def run(
+        self,
+        query: str,
+        context: dict[str, Any] | None = None,
+        memory_context: str = "",
+    ) -> dict[str, Any]:
+        """执行 Function Calling 循环"""
+        context = context or {}
+        openai_tools = self._build_openai_tools()
+
+        # ── 探测 Function Calling 支持 ──
+        if not self._check_fc_support(openai_tools):
+            fallback = ReActLoop(
+                tools=self.tools,
+                generator=self.generator,
+                rag_pipeline=self.rag_pipeline,
+                harness_config=self._config,
+            )
+            return fallback.run(query, context=context, memory_context=memory_context)
+
+        # ── 初始化 BudgetTracker ──
+        self._init_budget()
+
+        messages = [
+            {"role": "system", "content": self._build_system_prompt(memory_context)},
+            {"role": "user", "content": self._build_user_message(query, context)},
+        ]
+
+        trace: list[dict[str, Any]] = []
+        dead_loop_window: list[tuple[str, str]] = []
+        last_tool_result: dict[str, Any] | None = None
+
+        for step in range(1, self.max_steps + 1):
+            # ── 预算：墙钟 ──
+            reason = self._check_wall_clock()
+            if reason:
+                self._finalize_budget()
+                return self._build_result(False, reason, step, reason, trace, last_tool_result)
+
+            # ── 1. LLM（带 tools） ──
+            response = self.generator.chat_with_tools(
+                messages=messages,
+                tools=openai_tools,
+                tool_choice="auto",
+                temperature=0.3,
+                max_tokens=2048,
+                parallel_tool_calls=True,
+            )
+
+            # ── 预算：步数 + Token ──
+            response_text = response.content or ""
+            step_tokens = BudgetTracker.estimate_tokens(response_text)
+            reason = self._record_step(step_tokens)
+            if reason:
+                self._finalize_budget()
+                return self._build_result(False, reason, step, reason, trace, last_tool_result)
+
+            # ── 2. 追加 assistant ──
+            assistant_msg: dict[str, Any] = {"role": "assistant", "content": response.content}
+            if response.tool_calls:
+                assistant_msg["tool_calls"] = response.tool_calls
+            messages.append(assistant_msg)
+
+            trace.append(
+                {
+                    "step": step,
+                    "content": response.content,
+                    "tool_calls": [
+                        {"name": tc["function"]["name"], "args": tc["function"]["arguments"]}
+                        for tc in response.tool_calls
+                    ]
+                    if response.tool_calls
+                    else [],
+                }
+            )
+
+            # ── 3. 纯文本 → 最终答案 ──
+            if not response.tool_calls and response.content:
+                self._finalize_budget()
+                return self._build_result(True, response.content, step, "正常完成", trace, last_tool_result)
+
+            # ── 4. 执行 tool_calls ──
+            if response.tool_calls:
+                # ── 预算：工具调用次数 ──
+                reason = self._record_tool_calls(len(response.tool_calls))
+                if reason:
+                    self._finalize_budget()
+                    return self._build_result(False, reason, step, reason, trace, last_tool_result)
+
+                # ── Policy 检查 ──
+                pending_confirmation = False
+                policy_results: list[tuple[dict[str, Any], dict[str, Any]]] = []
+                for tc in response.tool_calls:
+                    name = tc["function"]["name"]
+                    reason_arg = self._extract_reason(tc)
+                    policy_result = self._check_tool_policy(name, reason_arg)
+                    if policy_result and (policy_result.needs_confirmation or not policy_result.allowed):
+                        pending_confirmation = True
+                    policy_results.append((tc, policy_result.to_dict()))
+
+                if pending_confirmation:
+                    if self.confirm_handler:
+                        confirmed = self.confirm_handler(policy_results)
+                        if not confirmed:
+                            rejection = (
+                                "用户已拒绝执行该操作。请向用户说明你为何需要调用此工具，"
+                                "或基于已有信息回答。如果无法完成请求，请诚实告知用户。"
+                            )
+                            for tc in response.tool_calls:
+                                messages.append(
+                                    {
+                                        "role": "tool",
+                                        "tool_call_id": tc["id"],
+                                        "content": rejection,
+                                    }
+                                )
+                            last_tool_result = {"success": False, "error": "用户拒绝"}
+                            continue
+                    else:
+                        self._finalize_budget()
+                        return self._build_result(
+                            False,
+                            {"pending_calls": [pr for _, pr in policy_results if pr["level"] != "auto"]},
+                            step,
+                            "需要用户确认",
+                            trace,
+                            last_tool_result,
+                        )
+
+                tool_results = self._execute_tool_calls(response.tool_calls, query, context)
+
+                for tc in response.tool_calls:
+                    self._policy_enforcer.record_call(tc["function"]["name"])
+
+                # ── 预算：工具结果 Token ──
+                obs_text = " ".join(tr.get("observation", "") for tr in tool_results)
+                obs_tokens = BudgetTracker.estimate_tokens(obs_text)
+                reason = self._record_step(obs_tokens)
+                if reason:
+                    self._finalize_budget()
+                    return self._build_result(False, reason, step, reason, trace, last_tool_result)
+
+                # ── 追加 tool results（压缩） ──
+                for tc, tr in zip(response.tool_calls, tool_results):
+                    obs = self._compress_observation(tr["observation"], tc["function"]["name"])
+                    messages.append({"role": "tool", "tool_call_id": tc["id"], "content": obs})
+
+                for tr in tool_results:
+                    if tr.get("structured"):
+                        last_tool_result = tr["structured"]
+
+                # ── 5. 死循环检测 ──
+                sig_parts = [tc["function"]["name"] for tc in response.tool_calls]
+                obs_parts = [tr["observation"][:300] for tr in tool_results]
+                dead_loop_window.append(("|".join(sig_parts), "|".join(obs_parts)))
+                if len(dead_loop_window) >= self._config.dead_loop_threshold:
+                    recent = dead_loop_window[-self._config.dead_loop_threshold :]
+                    if all(h == recent[0] for h in recent):
+                        self._finalize_budget()
+                        return self._build_result(
+                            False,
+                            "|".join(obs_parts),
+                            step,
+                            f"检测到死循环（连续{self._config.dead_loop_threshold}次相同操作）",
+                            trace,
+                            last_tool_result,
+                        )
+
+                # ── 6. 对话压缩 ──
+                messages = self._compress_messages(messages)
+
+        # ── 达到最大步数 ──
+        self._finalize_budget()
+        return self._build_result(
+            False,
+            "已达到最大推理步数，请简化问题或补充信息",
+            self.max_steps,
+            "达到最大步数限制",
+            trace,
+            last_tool_result,
+        )
+
+    # ── Function Calling 支持探测 ─────────────────────
+
+    def _check_fc_support(self, openai_tools: list[dict[str, Any]]) -> bool:
+        """探测后端 API 是否支持 Function Calling"""
+        if self._fc_supported is not None:
+            return self._fc_supported
+        if not self.generator or not openai_tools:
+            self._fc_supported = False
+            return False
+        try:
+            probe = self.generator.chat_with_tools(
+                messages=[{"role": "user", "content": "ping"}],
+                tools=openai_tools,
+                tool_choice="none",
+                max_tokens=10,
+            )
+            self._fc_supported = probe.content is not None or probe.finish_reason in ("stop",)
+        except Exception:
+            self._fc_supported = False
+        return self._fc_supported
+
+    # ── 提示词 ──────────────────────────────────────────
+
+    def _build_openai_tools(self) -> list[dict[str, Any]]:
+        """从注册工具构建 OpenAI 格式的 tools 列表"""
+        tools = [tool.openai_tool_schema for tool in self.tools.values()]
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": "retrieve",
+                    "description": "从知识库检索相关信息",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "搜索关键词"},
+                            "top_k": {"type": "integer", "description": "返回结果数量", "default": 5},
+                        },
+                        "required": ["query"],
+                    },
+                },
+            }
+        )
+        return tools
+
+    def _build_system_prompt(self, memory_context: str = "") -> str:
+        base = _FUNCTION_CALLING_SYSTEM_PROMPT.format(max_steps=self.max_steps)
+        if memory_context:
+            base += f"\n\n{memory_context}"
+        return base
 
 
 # ════════════════════════════════════════════════════════════════
@@ -747,41 +1128,36 @@ Final Answer: 你的完整回答
 6. 如果无法完成任务，在 Final Answer 中诚实说明"""
 
 
-class ReActLoop:
+class ReActLoop(AgentLoopBase):
     """自实现的 ReAct（Reasoning + Acting）循环
 
     核心思想：让 LLM 通过「思考→行动→观察→再思考」的迭代过程完成任务。
 
-      1. Thought:  LLM 分析当前状态，决定下一步做什么
-      2. Action:   调用工具或内置命令
-      3. Observation: 接收执行结果
-      4. → 回到 1，直到 LLM 输出 Final Answer 或触发终止条件
+    继承自 AgentLoopBase 的公共 Harness 能力：
+      - 预算控制（BudgetTracker）
+      - 上下文压缩（ContextCompressor）
+      - 工具执行（_execute_action / _execute_tool_calls / _execute_retrieve）
+      - Policy 检查（_check_tool_policy）
+      - 结果封装（_build_result）
 
-    面试价值：
-      - 展示对 Agent 核心机制的自实现能力（不依赖 LangChain）
-      - 理解 ReAct 如何解决 LLM 单次推理的局限性
-      - 包含完整的工业级终止条件设计
-
-    终止条件：
-      1. LLM 输出 Final Answer → 正常结束
-      2. 达到 MAX_STEPS 上限   → 超时终止
-      3. 死循环检测            → 连续 N 次相同操作且结果相同
+    本类只保留 ReAct 文本协议特有逻辑：
+      - 文本格式解析（_parse_react_output）
+      - system prompt 构建（_build_system_prompt）
     """
-
-    MAX_STEPS = 10
-    DEAD_LOOP_THRESHOLD = 3
 
     def __init__(
         self,
         tools: dict[str, Tool],
         generator=None,
         rag_pipeline=None,
-        max_steps: int = MAX_STEPS,
+        harness_config: AgentHarnessConfig | None = None,
     ):
-        self.tools = tools
-        self.generator = generator
-        self.rag_pipeline = rag_pipeline
-        self.max_steps = max_steps
+        super().__init__(
+            tools=tools,
+            harness_config=harness_config,
+            generator=generator,
+            rag_pipeline=rag_pipeline,
+        )
 
     def run(
         self,
@@ -789,26 +1165,11 @@ class ReActLoop:
         context: dict[str, Any] | None = None,
         memory_context: str = "",
     ) -> dict[str, Any]:
-        """执行 ReAct 循环
-
-        Args:
-            query:          用户问题
-            context:        额外上下文（如 file_path、top_k 等）
-            memory_context: 记忆上下文文本（由 MemoryManager 构建，注入到 system prompt）
-
-        Returns:
-            {
-                "success": bool,
-                "result": Any,            # 最终回答或工具输出
-                "tool_result": Any|None,  # 最近一次工具执行的结构化结果
-                "steps": int,             # 实际执行步数
-                "termination_reason": str,# 终止原因
-                "trace": [...],           # 完整的思考-行动轨迹
-            }
-        """
+        """执行 ReAct 循环"""
         context = context or {}
 
-        # ── 初始化消息列表 ──
+        self._init_budget()
+
         messages = [
             {"role": "system", "content": self._build_system_prompt(memory_context)},
             {"role": "user", "content": self._build_user_message(query, context)},
@@ -816,53 +1177,54 @@ class ReActLoop:
 
         trace: list[dict[str, Any]] = []
         dead_loop_window: list[tuple[str, str, str]] = []
-        last_tool_result = None  # 保存最近一次工具的结构化输出
+        last_tool_result = None
 
         for step in range(1, self.max_steps + 1):
+            # ── 预算：墙钟 ──
+            reason = self._check_wall_clock()
+            if reason:
+                self._finalize_budget()
+                return self._build_result(False, reason, step, reason, trace, last_tool_result)
+
             # ── 1. LLM 推理 ──
             response = self.generator.chat(messages, temperature=0.3, max_tokens=2048)
             messages.append({"role": "assistant", "content": response})
 
-            # ── 2. 解析输出 ──
+            # ── 预算：步数 + Token ──
+            step_tokens = BudgetTracker.estimate_tokens(response)
+            reason = self._record_step(step_tokens)
+            if reason:
+                self._finalize_budget()
+                return self._build_result(False, reason, step, reason, trace, last_tool_result)
+
+            # ── 2. 解析 ──
             parsed = self._parse_react_output(response)
             if parsed is None:
-                return self._build_result(
-                    False,
-                    response,
-                    step,
-                    "输出格式解析失败",
-                    trace,
-                    last_tool_result,
-                )
+                self._finalize_budget()
+                return self._build_result(False, response, step, "输出格式解析失败", trace, last_tool_result)
 
             thought = parsed.get("thought", "")
             action = parsed.get("action")
             action_input = parsed.get("action_input")
             final_answer = parsed.get("final_answer")
 
-            trace.append(
-                {
-                    "step": step,
-                    "thought": thought,
-                    "action": action,
-                    "action_input": action_input,
-                }
-            )
+            trace.append({"step": step, "thought": thought, "action": action, "action_input": action_input})
 
-            # ── 3. Final Answer → 正常结束 ──
+            # ── 3. Final Answer ──
             if final_answer is not None:
-                return self._build_result(
-                    True,
-                    final_answer,
-                    step,
-                    "正常完成",
-                    trace,
-                    last_tool_result,
-                )
+                self._finalize_budget()
+                return self._build_result(True, final_answer, step, "正常完成", trace, last_tool_result)
 
-            # ── 4. 执行 Action → 得到 Observation ──
+            # ── 4. 执行 Action ──
+            if action and action in self.tools:
+                reason = self._record_tool_calls(1)
+                if reason:
+                    self._finalize_budget()
+                    return self._build_result(False, reason, step, reason, trace, last_tool_result)
+
             observation = self._execute_action(action, action_input, query, context)
-            # 如果执行的是注册工具，保存结构化结果
+            observation = self._compress_observation(observation, action or "")
+
             if action in self.tools and isinstance(action_input, dict):
                 try:
                     parsed_obs = json.loads(observation) if isinstance(observation, str) else observation
@@ -870,24 +1232,30 @@ class ReActLoop:
                         last_tool_result = parsed_obs
                 except (json.JSONDecodeError, TypeError):
                     pass
+
             messages.append({"role": "user", "content": f"Observation: {observation}"})
 
             # ── 5. 死循环检测 ──
             sig = (action or "", str(action_input or ""), str(observation)[:300])
             dead_loop_window.append(sig)
-            if len(dead_loop_window) >= self.DEAD_LOOP_THRESHOLD:
-                recent = dead_loop_window[-self.DEAD_LOOP_THRESHOLD :]
+            if len(dead_loop_window) >= self._config.dead_loop_threshold:
+                recent = dead_loop_window[-self._config.dead_loop_threshold :]
                 if all(h == recent[0] for h in recent):
+                    self._finalize_budget()
                     return self._build_result(
                         False,
                         observation,
                         step,
-                        f"检测到死循环（连续{self.DEAD_LOOP_THRESHOLD}次相同操作）",
+                        f"检测到死循环（连续{self._config.dead_loop_threshold}次相同操作）",
                         trace,
                         last_tool_result,
                     )
 
+            # ── 6. 对话压缩 ──
+            messages = self._compress_messages(messages)
+
         # ── 达到最大步数 ──
+        self._finalize_budget()
         return self._build_result(
             False,
             "已达到最大推理步数，请简化问题或补充信息",
@@ -897,10 +1265,10 @@ class ReActLoop:
             last_tool_result,
         )
 
-    # ── 提示词构建 ──────────────────────────────────────
+    # ── ReAct 文本协议特有 ───────────────────────────────
 
     def _build_system_prompt(self, memory_context: str = "") -> str:
-        """构建系统提示词（含所有工具的 JSON Schema 描述 + 可选记忆上下文）"""
+        """构建系统提示词（含工具的 JSON Schema 描述）"""
         lines = []
         for name, tool in self.tools.items():
             schema = tool.get_schema()
@@ -922,52 +1290,27 @@ class ReActLoop:
             tool_descriptions="\n".join(lines) or "（无）",
             max_steps=self.max_steps,
         )
-
         if memory_context:
             base_prompt += f"\n\n{memory_context}"
-
         return base_prompt
-
-    @staticmethod
-    def _build_user_message(query: str, context: dict[str, Any]) -> str:
-        extra = ""
-        if context.get("file_path"):
-            extra += f"\n用户已提供文件路径：{context['file_path']}"
-        if context.get("report_type"):
-            extra += f"\n用户指定报告类型：{context['report_type']}"
-        return f"用户问题：{query}{extra}"
-
-    # ── 输出解析 ───────────────────────────────────────
 
     @staticmethod
     def _parse_react_output(text: str) -> dict[str, Any] | None:
         """解析 ReAct 格式输出：Thought / Action / Action Input / Final Answer"""
-        # 优先检查 Final Answer
-        final_m = re.search(
-            r"Final Answer:\s*(.*?)$",
-            text,
-            re.DOTALL,
-        )
+        final_m = re.search(r"Final Answer:\s*(.*?)$", text, re.DOTALL)
         if final_m:
             thought = ""
             thought_m = re.search(r"Thought:\s*(.*?)(?=\nFinal Answer:)", text, re.DOTALL)
             if thought_m:
                 thought = thought_m.group(1).strip()
-            return {
-                "thought": thought,
-                "final_answer": final_m.group(1).strip(),
-                "action": None,
-                "action_input": None,
-            }
+            return {"thought": thought, "final_answer": final_m.group(1).strip(), "action": None, "action_input": None}
 
-        # 检查 Action
         action_m = re.search(r"Action:\s*(\S+)", text)
         if action_m:
             thought = ""
             thought_m = re.search(r"Thought:\s*(.*?)(?=\nAction:)", text, re.DOTALL)
             if thought_m:
                 thought = thought_m.group(1).strip()
-
             action_input = None
             ai_m = re.search(r'Action Input:\s*(\{.*\}|".*?")', text, re.DOTALL)
             if ai_m:
@@ -975,9 +1318,7 @@ class ReActLoop:
                 try:
                     action_input = json.loads(raw)
                 except json.JSONDecodeError:
-                    # 可能是裸字符串
                     action_input = raw.strip("\"'")
-
             return {
                 "thought": thought,
                 "action": action_m.group(1).strip(),
@@ -986,80 +1327,6 @@ class ReActLoop:
             }
 
         return None
-
-    # ── Action 执行 ────────────────────────────────────
-
-    def _execute_action(
-        self,
-        action: str,
-        action_input: Any,
-        query: str,
-        context: dict[str, Any],
-    ) -> str:
-        """执行工具调用或内置命令，返回 Observation 文本"""
-        # ── 内置命令：知识库检索 ──
-        if action == "retrieve":
-            return self._execute_retrieve(action_input, query)
-
-        # ── 注册工具 ──
-        if action in self.tools:
-            tool = self.tools[action]
-            params = action_input if isinstance(action_input, dict) else {}
-            # 注入外部上下文参数
-            for key in ("file_path",):
-                if key not in params and context.get(key):
-                    params[key] = context[key]
-            try:
-                result = tool.run(**params)
-                return json.dumps(result, ensure_ascii=False, default=str)[:3000]
-            except Exception as e:
-                return f"工具调用失败：{e}"
-
-        return f"未知命令：{action}。可用工具：{list(self.tools.keys())}，内置命令：['retrieve']"
-
-    def _execute_retrieve(self, action_input: Any, default_query: str) -> str:
-        """执行知识库检索"""
-        if not self.rag_pipeline or not self.rag_pipeline.retriever:
-            return "检索功能不可用（未连接知识库）"
-
-        q = default_query
-        k = 5
-        if isinstance(action_input, dict):
-            q = action_input.get("query", default_query)
-            k = action_input.get("top_k", 5)
-
-        try:
-            chunks = self.rag_pipeline.retriever.retrieve(q, top_k=k)
-            if not chunks:
-                return "知识库中未找到相关信息。"
-            parts = []
-            for i, c in enumerate(chunks[:5], 1):
-                text = c["text"][:300]
-                src = c["metadata"].get("filename", "未知")
-                parts.append(f"[{i}]（来源：{src}）{text}")
-            return "\n\n".join(parts)
-        except Exception as e:
-            return f"检索出错：{e}"
-
-    # ── 结果封装 ───────────────────────────────────────
-
-    @staticmethod
-    def _build_result(
-        success: bool,
-        result: Any,
-        steps: int,
-        reason: str,
-        trace: list[dict[str, Any]],
-        tool_result: Any = None,
-    ) -> dict[str, Any]:
-        return {
-            "success": success,
-            "result": result,
-            "tool_result": tool_result,
-            "steps": steps,
-            "termination_reason": reason,
-            "trace": trace,
-        }
 
 
 # ── 辅助函数 ─────────────────────────────────────────
@@ -1110,10 +1377,11 @@ class Agent:
       - 向后兼容的接口设计
     """
 
-    def __init__(self, rag_pipeline=None, memory_manager=None):
+    def __init__(self, rag_pipeline=None, memory_manager=None, harness_config: AgentHarnessConfig | None = None):
         self.rag_pipeline = rag_pipeline
         self.tools: dict[str, Tool] = {}
         self.memory_manager: MemoryManager | None = memory_manager
+        self._harness_config = harness_config or AgentHarnessConfig()
         self._register_default_tools()
 
         # LLM 驱动意图分类器（共享 pipeline 的 generator）
@@ -1131,6 +1399,7 @@ class Agent:
                 tools=self.tools,
                 generator=self.rag_pipeline.generator if self.rag_pipeline else None,
                 rag_pipeline=self.rag_pipeline,
+                harness_config=self._harness_config,
             )
         return self._react
 
@@ -1230,7 +1499,7 @@ class Agent:
                 context["report_type"] = intent["report_type"]
 
             # 检查是否有 generator，无则走直接工具调用（规则兜底）
-            generator = self._react_loop.generator if self._react else None
+            generator = self._react_loop.generator
             if generator is None:
                 result = self._handle_without_react(intent, query, top_k, file_path)
             else:

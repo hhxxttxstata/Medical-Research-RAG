@@ -76,6 +76,21 @@ KB_CHUNK_COUNT = Gauge(
     labelnames=[],
 )
 
+# Agent Token 消耗（Histogram，每会话一次）
+AGENT_TOKEN_USAGE = Histogram(
+    "rag_agent_token_usage",
+    "Agent 会话 Token 消耗",
+    labelnames=[],
+    buckets=[100, 500, 2000, 8000, 16384, 32768],
+)
+
+# Agent 终止原因分布（Counter）
+AGENT_BUDGET_REASON = Counter(
+    "rag_agent_budget_reason",
+    "Agent 终止原因分布",
+    labelnames=["reason"],
+)
+
 
 # ── 便捷函数 ───────────────────────────────────────────
 
@@ -107,6 +122,16 @@ def record_agent_steps(steps: int) -> None:
 def record_kb_size(count: int) -> None:
     """设置知识库大小（启动时调用一次）"""
     KB_CHUNK_COUNT.set(count)
+
+
+def record_agent_token_usage(tokens: int) -> None:
+    """记录 Agent 会话 Token 消耗"""
+    AGENT_TOKEN_USAGE.observe(tokens)
+
+
+def record_agent_budget_reason(reason: str) -> None:
+    """记录 Agent 终止原因"""
+    AGENT_BUDGET_REASON.labels(reason=reason).inc()
 
 
 def get_metrics_registry() -> CollectorRegistry:

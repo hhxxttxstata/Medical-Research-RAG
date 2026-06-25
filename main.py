@@ -122,7 +122,8 @@ def main():
 
     # 初始化可观测性（MCP 模式在 mcp_main() 中自行初始化）
     if not args.mcp:
-        init_tracing(service_name="pe-rag-system-cli")
+        init_tracing(service_name="pe-rag-system-cli", silent=True)
+        os.environ["STRUCTLOG_FORMAT"] = "console"
         setup_structlog(service_name="pe-rag-system-cli", force_json=False)
 
     # ── MCP Server 模式：直接启动，不创建本地 pipeline ──
@@ -248,6 +249,40 @@ def show_status(pipeline: RAGPipeline):
     print("=" * 60 + "\n")
 
 
+def _make_cli_confirm_handler():
+    """创建 CLI 交互式确认处理器
+
+    当工具策略级别为 confirm 时，打印工具信息和参数，等待用户输入 y/n。
+    返回 True = 批准，False = 拒绝。
+    """
+    import json
+
+    def handler(policy_results):
+        print("\n" + "=" * 60)
+        print("  🔐 工具调用需要确认")
+        print("=" * 60)
+        for tc, pr in policy_results:
+            tool_name = tc["function"]["name"]
+            level = pr.get("level", "unknown")
+            reason = pr.get("reason", "")
+            try:
+                args = json.loads(tc["function"]["arguments"])
+                args_str = json.dumps(args, ensure_ascii=False, indent=2)
+            except Exception:
+                args_str = tc["function"]["arguments"]
+            print(f"  🔧 工具: {tool_name}")
+            print(f"  📋 级别: {level}")
+            print(f"  📝 说明: {reason}")
+            print("  📎 参数:")
+            for line in args_str.split("\n"):
+                print(f"       {line}")
+        print("=" * 60)
+        ans = input("\n❓ 是否批准执行？(y/N): ").strip().lower()
+        return ans in ("y", "yes")
+
+    return handler
+
+
 def agent_main(pipeline: RAGPipeline, query: str, report_type: str = None):
     """
     Agent 模式入口：自动判断意图 -> 检索上下文 -> 调用工具 -> 输出结果
@@ -262,8 +297,13 @@ def agent_main(pipeline: RAGPipeline, query: str, report_type: str = None):
             print("❌ 知识库初始化失败，请检查 data/ 目录")
             return
 
-    # 初始化 Agent
-    agent = Agent(rag_pipeline=pipeline)
+    # 初始化 Agent（带 CLI 确认处理器）
+    from src.agent import AgentHarnessConfig
+
+    agent = Agent(
+        rag_pipeline=pipeline,
+        harness_config=AgentHarnessConfig(confirm_handler=_make_cli_confirm_handler()),
+    )
 
     # 如果用户强制指定了报告类型，直接走对应报告生成流程
     if report_type:
@@ -325,7 +365,9 @@ def agent_main(pipeline: RAGPipeline, query: str, report_type: str = None):
     if result.get("agent_handled"):
         tool_result = result.get("result", {})
         if tool_result.get("success"):
-            print(tool_result["report"])
+            # 优先使用 formatted_report（诊断结果），退回到 report（报告生成）
+            output = tool_result.get("formatted_report") or tool_result.get("report", str(tool_result))
+            print(output)
             print(f"\n{'=' * 60}")
             report_types = {
                 "deployment": "部署报告",
@@ -333,9 +375,10 @@ def agent_main(pipeline: RAGPipeline, query: str, report_type: str = None):
                 "meeting": "会议纪要",
             }
             rtype = result.get("report_type", "")
-            print(
-                f"  ✅ {report_types.get(rtype, '报告')}生成完成，基于 {len(result.get('retrieved_chunks', []))} 个检索片段"
-            )
+            if rtype:
+                print(f"  ✅ {report_types.get(rtype, '报告')}生成完成")
+            else:
+                print("  ✅ 工具调用成功")
             print(f"{'=' * 60}\n")
         else:
             print(f"\n❌ 工具调用失败: {tool_result}")
@@ -363,7 +406,7 @@ def interactive_agent_mode(pipeline: RAGPipeline):
             print("❌ 知识库初始化失败，请检查 data/ 目录")
             return
 
-    agent = Agent(rag_pipeline=pipeline)
+    agent = Agent(rag_pipeline=pipeline, confirm_handler=_make_cli_confirm_handler())
 
     print(f"\n📚 知识库已就绪: {count} 个 Chunk")
     print("💡 输入 'quit' 退出，'reload' 重载")

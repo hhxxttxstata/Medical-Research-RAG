@@ -15,6 +15,7 @@ import time
 from typing import Any
 
 from .embeddings import EmbeddingProvider
+from .lucene_bm25 import LuceneBM25Index
 from .monitoring.metrics import record_retrieval
 
 # ── 可观测性 ────────────────────────────────────────
@@ -161,6 +162,8 @@ class HybridRetriever(Retriever):
         enable_reranker: bool = True,
         rerank_top_k: int = 20,  # 送入 reranker 的候选数（从混合检索取这么多）
         reranker=None,  # CrossEncoderReranker 实例（优先于 LLM reranker）
+        bm25_backend: str = "memory",  # "memory" | "lucene" — 内存 BM25Okapi 或磁盘 Whoosh
+        bm25_index_dir: str = "lucene_bm25_index",  # Lucene BM25 索引目录
     ):
         super().__init__(vector_store, embedding_provider, top_k)
         self.bm25_weight = bm25_weight
@@ -169,7 +172,9 @@ class HybridRetriever(Retriever):
         self.enable_reranker = enable_reranker
         self.rerank_top_k = rerank_top_k
         self._reranker = reranker  # CrossEncoderReranker 实例
-        self._bm25 = None
+        self._bm25 = None  # 内存 BM25Okapi 或 LuceneBM25Index
+        self._bm25_backend = bm25_backend
+        self._bm25_index_dir = bm25_index_dir
         self._bm25_docs: list[str] = []
         self._bm25_ids: list[str] = []
         self._original_query: str = ""  # 用于区分改写 query 和原始 query
@@ -437,13 +442,22 @@ class HybridRetriever(Retriever):
         return scores[:expected_count]
 
     # ══════════════════════════════════════════════════
-    #  BM25 索引与检索（不变）
+    #  BM25 索引与检索（内存 BM25Okapi 或磁盘 Whoosh）
     # ══════════════════════════════════════════════════
 
     def _ensure_bm25_index(self):
         """懒初始化 BM25 索引（只跑一次）"""
         if self._bm25 is not None:
             return
+
+        if self._bm25_backend == "lucene":
+            # 磁盘 Lucene BM25（Whoosh）— 零内存增长
+            self._bm25 = LuceneBM25Index(index_dir=self._bm25_index_dir)
+            self._bm25_ids = []
+            self._bm25_docs = []
+            return
+
+        # 传统内存 BM25（rank_bm25）
         all_chunks = self.vector_store.get_all_documents()
         if not all_chunks:
             self._bm25 = None
@@ -476,8 +490,14 @@ class HybridRetriever(Retriever):
 
     def _bm25_retrieve(self, query: str, top_k: int) -> list[dict[str, Any]]:
         self._ensure_bm25_index()
-        if self._bm25 is None or not self._bm25_ids:
+        if self._bm25 is None:
             return []
+
+        if self._bm25_backend == "lucene":
+            # 磁盘 Whoosh BM25 检索
+            return self._bm25.search(query, top_k=top_k)
+
+        # 传统内存 BM25Okapi 检索
         tokenized_query = self._bm25_tokenize(query)
         scores = self._bm25.get_scores(tokenized_query)
         scored = list(zip(self._bm25_ids, self._bm25_docs, scores))
@@ -507,9 +527,21 @@ class HybridRetriever(Retriever):
             pass
         return None
 
-    # ══════════════════════════════════════════════════
-    #  RRF 融合（不变）
-    # ══════════════════════════════════════════════════
+    def get_bm25_info(self) -> dict[str, Any]:
+        """获取 BM25 索引状态信息"""
+        self._ensure_bm25_index()
+        if self._bm25_backend == "lucene" and self._bm25:
+            return {
+                "bm25_ready": True,
+                "backend": "lucene",
+                "num_docs": self._bm25.get_total_docs(),
+                "index_dir": self._bm25_index_dir,
+            }
+        return {
+            "bm25_ready": self._bm25 is not None,
+            "backend": "memory",
+            "num_docs": len(self._bm25_ids) if self._bm25_ids else 0,
+        }
 
     @staticmethod
     def _rrf_fusion(
@@ -556,10 +588,3 @@ class HybridRetriever(Retriever):
                 }
             )
         return results
-
-    def get_bm25_info(self) -> dict[str, Any]:
-        self._ensure_bm25_index()
-        return {
-            "bm25_ready": self._bm25 is not None,
-            "num_docs": len(self._bm25_ids) if self._bm25_ids else 0,
-        }
