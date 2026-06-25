@@ -113,7 +113,7 @@ class PolicyEnforcer:
     """
 
     def __init__(self):
-        # tool_name → [timestamp, ...]  滑动窗口调用记录
+        # "session_id:tool_name" → [timestamp, ...]  滑动窗口调用记录
         self._call_history: dict[str, list[float]] = {}
 
     def check(
@@ -121,13 +121,15 @@ class PolicyEnforcer:
         tool_name: str,
         policy: ToolPolicy,
         reason: str = "",
+        session_id: str = "",
     ) -> PolicyResult:
         """检查是否允许调用指定工具
 
         Args:
-            tool_name: 工具名称
-            policy: 工具策略定义
-            reason: Agent 提供的调用理由（require_reason=True 时需要）
+            tool_name:  工具名称
+            policy:     工具策略定义
+            reason:     Agent 提供的调用理由（require_reason=True 时需要）
+            session_id: 会话 ID，用于按会话隔离 rate limit
 
         Returns:
             PolicyResult
@@ -144,9 +146,9 @@ class PolicyEnforcer:
                 needs_confirmation=False,
             )
 
-        # ── 3. Rate limit 检查 ──
-        if not self._check_rate_limit(tool_name, policy.rate_limit):
-            retry_after = self._retry_after(tool_name, policy.rate_limit)
+        # ── 3. Rate limit 检查（按会话隔离） ──
+        if not self._check_rate_limit(tool_name, policy.rate_limit, session_id):
+            retry_after = self._retry_after(tool_name, policy.rate_limit, session_id)
             return PolicyResult(
                 allowed=False,
                 level=policy.access_level,
@@ -182,46 +184,48 @@ class PolicyEnforcer:
             reason=f"未知访问级别: {policy.access_level}",
         )
 
-    def record_call(self, tool_name: str) -> None:
-        """记录一次工具调用（用于 rate limit 计数）"""
+    def record_call(self, tool_name: str, session_id: str = "") -> None:
+        """记录一次工具调用（用于 rate limit 计数，按会话隔离）"""
+        key = f"{session_id}:{tool_name}" if session_id else tool_name
         now = time.monotonic()
-        if tool_name not in self._call_history:
-            self._call_history[tool_name] = []
+        if key not in self._call_history:
+            self._call_history[key] = []
         # 清理 60 秒之前的记录
         cutoff = now - 60
-        self._call_history[tool_name] = [t for t in self._call_history[tool_name] if t > cutoff]
-        self._call_history[tool_name].append(now)
+        self._call_history[key] = [t for t in self._call_history[key] if t > cutoff]
+        self._call_history[key].append(now)
 
-    def _check_rate_limit(self, tool_name: str, limit: int) -> bool:
-        """检查是否超过限流阈值（滑动窗口，60 秒）"""
+    def _check_rate_limit(self, tool_name: str, limit: int, session_id: str = "") -> bool:
+        """检查是否超过限流阈值（滑动窗口，60 秒，按会话隔离）"""
         if limit <= 0:
             return True  # 不限
+        key = f"{session_id}:{tool_name}" if session_id else tool_name
         now = time.monotonic()
         cutoff = now - 60
-        history = self._call_history.get(tool_name, [])
+        history = self._call_history.get(key, [])
         # 只保留 60 秒内的记录
         recent = [t for t in history if t > cutoff]
         return len(recent) < limit
 
-    def _retry_after(self, tool_name: str, limit: int) -> float:
-        """建议重试等待秒数"""
+    def _retry_after(self, tool_name: str, limit: int, session_id: str = "") -> float:
+        """建议重试等待秒数（按会话隔离）"""
         if limit <= 0:
             return 0.0
-        history = self._call_history.get(tool_name, [])
+        key = f"{session_id}:{tool_name}" if session_id else tool_name
+        history = self._call_history.get(key, [])
         if len(history) < limit:
             return 0.0
-        # 超 过限制后，最早的那次调用退休还需要多久
         cutoff = time.monotonic() - 60
         valid = [t for t in history if t > cutoff]
         if len(valid) >= limit:
-            # 最旧的那个调用在 (valid[0] + 60) 时退休
             return max(0.0, valid[0] + 60 - time.monotonic())
         return 0.0
 
-    def reset(self, tool_name: str | None = None) -> None:
+    def reset(self, tool_name: str | None = None, session_id: str = "") -> None:
         """重置调用记录（测试用）"""
         if tool_name:
-            self._call_history.pop(tool_name, None)
+            key = f"{session_id}:{tool_name}" if session_id else tool_name
+            self._call_history.pop(key, None)
         else:
             self._call_history.clear()
 

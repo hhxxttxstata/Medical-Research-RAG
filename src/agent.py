@@ -744,8 +744,13 @@ class AgentLoopBase:
     #  —— Policy 检查（公共） ——
     # ════════════════════════════════════════════════════════
 
-    def _check_tool_policy(self, tool_name: str, reason: str = "") -> "PolicyResult | None":
+    def _check_tool_policy(self, tool_name: str, reason: str = "", session_id: str = "") -> "PolicyResult | None":
         """检查工具调用策略
+
+        Args:
+            tool_name: 工具名称
+            reason:    调用理由
+            session_id: 会话 ID（用于按会话隔离 rate limit）
 
         Returns:
             PolicyResult | None — None 表示 auto 放行，否则包含策略判定结果
@@ -761,7 +766,7 @@ class AgentLoopBase:
         if policy is None:
             return None
 
-        result = self._policy_enforcer.check(tool_name, policy, reason)
+        result = self._policy_enforcer.check(tool_name, policy, reason, session_id)
         if result.level == "auto" and result.allowed:
             return None
 
@@ -862,6 +867,7 @@ class FunctionCallingLoop(AgentLoopBase):
         query: str,
         context: dict[str, Any] | None = None,
         memory_context: str = "",
+        session_id: str = "",
     ) -> dict[str, Any]:
         """执行 Function Calling 循环"""
         context = context or {}
@@ -875,7 +881,7 @@ class FunctionCallingLoop(AgentLoopBase):
                 rag_pipeline=self.rag_pipeline,
                 harness_config=self._config,
             )
-            return fallback.run(query, context=context, memory_context=memory_context)
+            return fallback.run(query, context=context, memory_context=memory_context, session_id=session_id)
 
         # ── 初始化 BudgetTracker ──
         self._init_budget()
@@ -914,7 +920,7 @@ class FunctionCallingLoop(AgentLoopBase):
                     rag_pipeline=self.rag_pipeline,
                     harness_config=self._config,
                 )
-                return fallback.run(query, context=context, memory_context=memory_context)
+                return fallback.run(query, context=context, memory_context=memory_context, session_id=session_id)
 
             # ── 预算：步数 + Token ──
             response_text = response.content or ""
@@ -962,7 +968,7 @@ class FunctionCallingLoop(AgentLoopBase):
                 for tc in response.tool_calls:
                     name = tc["function"]["name"]
                     reason_arg = self._extract_reason(tc)
-                    policy_result = self._check_tool_policy(name, reason_arg)
+                    policy_result = self._check_tool_policy(name, reason_arg, session_id)
                     if policy_result and (policy_result.needs_confirmation or not policy_result.allowed):
                         pending_confirmation = True
                     policy_results.append((tc, policy_result.to_dict()))
@@ -999,7 +1005,7 @@ class FunctionCallingLoop(AgentLoopBase):
                 tool_results = self._execute_tool_calls(response.tool_calls, query, context)
 
                 for tc in response.tool_calls:
-                    self._policy_enforcer.record_call(tc["function"]["name"])
+                    self._policy_enforcer.record_call(tc["function"]["name"], session_id)
 
                 # ── 预算：工具结果 Token ──
                 obs_text = " ".join(tr.get("observation", "") for tr in tool_results)
@@ -1174,6 +1180,7 @@ class ReActLoop(AgentLoopBase):
         query: str,
         context: dict[str, Any] | None = None,
         memory_context: str = "",
+        session_id: str = "",
     ) -> dict[str, Any]:
         """执行 ReAct 循环"""
         context = context or {}
@@ -1514,7 +1521,9 @@ class Agent:
                 result = self._handle_without_react(intent, query, top_k, file_path)
             else:
                 with tracer.start_as_current_span("agent.react_loop") as react_span:
-                    react_result = self._react_loop.run(query, context=context, memory_context=memory_context)
+                    react_result = self._react_loop.run(
+                        query, context=context, memory_context=memory_context, session_id=effective_sid
+                    )
                     steps = len(react_result.get("trace", []))
                     react_span.set_attribute("steps", steps)
                     react_span.set_attribute("termination", react_result.get("termination", "unknown"))
