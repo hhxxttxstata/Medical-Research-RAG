@@ -1,9 +1,9 @@
 """
 检索模块
 实现 Top-k 检索，返回最相关的文档片段
-支持纯向量检索（Retriever）和混合检索（HybridRetriever）
+支持纯向量检索和混合检索（向量 + BM25 + Reranker）
 
-三级召回流水线（HybridRetriever 增强版）：
+三级召回流水线：
   1. Query Rewriting  — LLM 将用户口语化问题改写为检索友好查询
   2. Hybrid Search    — 向量检索 + BM25 → RRF 融合
   3. Reranker         — Cross-encoder 或 LLM 对候选结果进行相关性重排序
@@ -87,65 +87,17 @@ _RERANK_USER_PROMPT = """用户问题：{query}
 
 
 class Retriever:
-    """检索器（纯向量检索）"""
-
-    def __init__(
-        self,
-        vector_store: VectorStore,
-        embedding_provider: EmbeddingProvider,
-        top_k: int = 5,
-    ):
-        self.vector_store = vector_store
-        self.embedding_provider = embedding_provider
-        self.top_k = top_k
-
-    def retrieve(self, query: str, top_k: int | None = None) -> list[dict[str, Any]]:
-        """检索与查询最相关的 Chunk"""
-        k = top_k or self.top_k
-
-        # 1. 将查询向量化（e5 模型需要 "query: " 前缀）
-        query_embedding = self.embedding_provider.embed([query], prefix="query: ")[0]
-
-        # 2. 在向量数据库中搜索
-        results = self.vector_store.similarity_search(
-            query_embedding=query_embedding,
-            top_k=k,
-        )
-
-        return results
-
-    def format_results(self, results: list[dict[str, Any]]) -> str:
-        """格式化检索结果为可读文本"""
-        lines = []
-        lines.append(f"🔍 检索到 {len(results)} 个相关片段:\n")
-
-        for i, r in enumerate(results, 1):
-            meta = r["metadata"]
-            source = f"[{meta.get('filename', 'unknown')}]"
-            if meta.get("page"):
-                source += f" 第 {meta['page']} 页"
-
-            lines.append(f"{'=' * 60}")
-            lines.append(f"📄 片段 {i} | {source} | 相似度: {r['score']:.3f}")
-            lines.append(f"{'=' * 60}")
-            lines.append(r["text"][:300] + ("..." if len(r["text"]) > 300 else ""))
-            lines.append("")
-
-        return "\n".join(lines)
-
-
-class HybridRetriever(Retriever):
-    """混合检索器（三级召回：Query Rewriting + 向量+BM25 + Reranker）
+    """检索器（三级召回：Query Rewriting + 向量+BM25 + Reranker）
 
     三级流水线：
       0. Query Rewriting（可选）— LLM 改写查询
       1. Hybrid Search — 向量检索 + BM25 关键词 + RRF 融合
       2. Reranker（可选）— LLM 对候选重新评分
 
-    每一级都可独立开关。无 LLM 时自动跳过第 0/2 级，行为等同于旧版。
+    每一级都可独立开关。无 LLM 时自动跳过第 0/2 级，行为等同于纯向量检索。
     """
 
-    # ── 默认提示词（可被子类替换，便于测试） ──────────
+    # ── 默认提示词 ──────────
     REWRITE_SYSTEM_PROMPT = _REWRITE_SYSTEM_PROMPT
     REWRITE_USER_PROMPT = _REWRITE_USER_PROMPT
     RERANK_SYSTEM_PROMPT = _RERANK_SYSTEM_PROMPT
@@ -155,25 +107,28 @@ class HybridRetriever(Retriever):
         self,
         vector_store: VectorStore,
         embedding_provider: EmbeddingProvider,
-        top_k: int = 5,
+        top_k: int = 20,
         bm25_weight: float = 0.5,
-        generator=None,  # LLMGenerator 实例，用于 rewrite + LLM rerank
+        generator=None,
         enable_rewrite: bool = True,
         enable_reranker: bool = True,
-        rerank_top_k: int = 20,  # 送入 reranker 的候选数（从混合检索取这么多）
-        reranker=None,  # CrossEncoderReranker 实例（优先于 LLM reranker）
-        bm25_backend: str = "memory",  # "memory" | "lucene" — 内存 BM25Okapi 或磁盘 Whoosh
-        bm25_index_dir: str = "lucene_bm25_index",  # Lucene BM25 索引目录
+        rerank_top_k: int = 50,
+        reranker=None,
+        bm25_backend: str = "memory",
+        bm25_index_dir: str = "lucene_bm25_index",
     ):
-        super().__init__(vector_store, embedding_provider, top_k)
+        self.vector_store = vector_store
+        self.embedding_provider = embedding_provider
+        self.top_k = top_k
         self.bm25_weight = bm25_weight
+        # 无 generator 时自动禁用 rewrite 和 LLM reranker
         self.generator = generator
-        self.enable_rewrite = enable_rewrite
-        self.enable_reranker = enable_reranker
+        self.enable_rewrite = enable_rewrite if generator else False
+        self.enable_reranker = enable_reranker if generator else False
         self.rerank_top_k = rerank_top_k
         self._reranker = reranker  # CrossEncoderReranker 实例
         self._bm25 = None  # 内存 BM25Okapi 或 LuceneBM25Index
-        self._bm25_backend = bm25_backend
+        self._bm25_backend = bm25_backend if generator else "memory"
         self._bm25_index_dir = bm25_index_dir
         self._bm25_docs: list[str] = []
         self._bm25_ids: list[str] = []
@@ -193,6 +148,15 @@ class HybridRetriever(Retriever):
         3. Reranker（可选）
         """
         k = top_k or self.top_k
+
+        # ── 无 LLM → 纯向量检索（兼容旧版） ──
+        if self.generator is None:
+            query_embedding = self.embedding_provider.embed([query], prefix="query: ")[0]
+            results = self.vector_store.similarity_search(query_embedding=query_embedding, top_k=k)
+            for r in results:
+                r.pop("_rrf_score", None)
+                r.pop("_retriever", None)
+            return results
 
         # ── 追踪 span ──
         tracer = get_tracer()
@@ -311,15 +275,13 @@ class HybridRetriever(Retriever):
     def _hybrid_retrieve(self, query: str, fetch_k: int) -> list[dict[str, Any]]:
         """纯混合检索（不包含 rewrite / rerank），可被多条改写 query 重复调用"""
         # 1. 向量检索（语义）
-        vector_results = super().retrieve(query, top_k=fetch_k)
+        query_embedding = self.embedding_provider.embed([query], prefix="query: ")[0]
+        vector_results = self.vector_store.similarity_search(query_embedding=query_embedding, top_k=fetch_k)
         for r in vector_results:
             r["_retriever"] = "vector"
             r["_vector_score"] = r.get("score", 0.0)
-        # 改写后的 query 跳过 BM25（改写已覆盖语义，BM25 会引入噪声）
-        if query != self._original_query:
-            return vector_results  # 跳过 BM25
 
-        # 2. BM25 检索（关键词）
+        # 2. BM25 检索（关键词）— 不论是否改写，都走 BM25
         bm25_results = self._bm25_retrieve(query, top_k=fetch_k)
 
         # 3. RRF 融合

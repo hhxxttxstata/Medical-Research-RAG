@@ -10,7 +10,7 @@
 
 import json
 
-from src.retriever import HybridRetriever
+from src.retriever import Retriever
 
 # ═══════════════════════════════════════════════════════════════
 #  测试辅助
@@ -81,7 +81,7 @@ class TestQueryRewriting:
 
     def test_disabled(self):
         """enable_rewrite=False 时 _can_rewrite 返回 False"""
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(),
             embedding_provider=MockEmbeddingProvider(),
             generator=MockGenerator(),
@@ -92,7 +92,7 @@ class TestQueryRewriting:
 
     def test_no_generator(self):
         """generator=None 时返回 [原始query]"""
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(),
             embedding_provider=MockEmbeddingProvider(),
             generator=None,
@@ -110,7 +110,7 @@ class TestQueryRewriting:
                 "原始问题：看看CT": "肺栓塞CTPA诊断\n肺栓塞影像表现\nCT肺动脉造影",
             }
         )
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(),
             embedding_provider=MockEmbeddingProvider(),
             generator=gen,
@@ -127,7 +127,7 @@ class TestQueryRewriting:
                 "原始问题：什么是肺栓塞": "肺栓塞定义 病因 临床表现",
             }
         )
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(),
             embedding_provider=MockEmbeddingProvider(),
             generator=gen,
@@ -143,7 +143,7 @@ class TestQueryRewriting:
                 "原始问题：诊断方法": "1. 肺栓塞诊断方法\n2. CTPA影像学检查",
             }
         )
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(),
             embedding_provider=MockEmbeddingProvider(),
             generator=gen,
@@ -160,7 +160,7 @@ class TestQueryRewriting:
             def chat(self, messages, temperature=0.0, max_tokens=256) -> str:
                 raise RuntimeError("API fail")
 
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(),
             embedding_provider=MockEmbeddingProvider(),
             generator=FailingGenerator(),
@@ -176,7 +176,7 @@ class TestQueryRewriting:
                 "__default__": "",
             }
         )
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(),
             embedding_provider=MockEmbeddingProvider(),
             generator=gen,
@@ -192,7 +192,7 @@ class TestQueryRewriting:
                 "__default__": "改写后的查询",
             }
         )
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(),
             embedding_provider=MockEmbeddingProvider(),
             generator=gen,
@@ -210,7 +210,7 @@ class TestQueryRewriting:
                 "__default__": "改写结果",
             }
         )
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(),
             embedding_provider=MockEmbeddingProvider(),
             generator=gen,
@@ -222,7 +222,7 @@ class TestQueryRewriting:
     def test_parse_removes_empty_lines(self):
         """空行应被过滤"""
         lines = "\n\n\n肺栓塞诊断\n\n\nCT表现\n\n"
-        result = HybridRetriever._parse_rewrite_response(lines)
+        result = Retriever._parse_rewrite_response(lines)
         assert result is not None
         assert len(result) == 2
         assert "肺栓塞诊断" in result
@@ -238,7 +238,7 @@ class TestReranker:
 
     def test_disabled(self):
         """enable_reranker=False 时跳过"""
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(),
             embedding_provider=MockEmbeddingProvider(),
             generator=MockGenerator(),
@@ -249,7 +249,7 @@ class TestReranker:
 
     def test_no_generator(self):
         """generator=None 时跳过"""
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(),
             embedding_provider=MockEmbeddingProvider(),
             generator=None,
@@ -268,7 +268,7 @@ class TestReranker:
                 {"id": "chunk_2", "relevance": 7, "reason": "相关"},
             ]
         )
-        scores = HybridRetriever._parse_rerank_response(response, 3)
+        scores = Retriever._parse_rerank_response(response, 3)
         assert scores is not None
         assert len(scores) == 3
         assert scores[0] == 9.0
@@ -278,7 +278,7 @@ class TestReranker:
     def test_parse_with_padding(self):
         """评分数量不足时用 0 填充"""
         response = json.dumps([{"relevance": 8}])
-        scores = HybridRetriever._parse_rerank_response(response, 5)
+        scores = Retriever._parse_rerank_response(response, 5)
         assert scores is not None
         assert len(scores) == 5
         assert scores[0] == 8.0
@@ -287,14 +287,14 @@ class TestReranker:
     def test_parse_markdown_fence(self):
         """能处理 ```json 包裹"""
         response = '```json\n[{"relevance": 8}, {"relevance": 5}]\n```'
-        scores = HybridRetriever._parse_rerank_response(response, 2)
+        scores = Retriever._parse_rerank_response(response, 2)
         assert scores is not None
         assert scores[0] == 8.0
 
     def test_parse_invalid_fallback(self):
         """无效输出返回 None"""
-        assert HybridRetriever._parse_rerank_response("不是JSON", 3) is None
-        assert HybridRetriever._parse_rerank_response("", 3) is None
+        assert Retriever._parse_rerank_response("不是JSON", 3) is None
+        assert Retriever._parse_rerank_response("", 3) is None
 
     def test_rerank_sorts_by_score(self):
         """reranker 应高分在前"""
@@ -309,7 +309,7 @@ class TestReranker:
                 ),
             }
         )
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(),
             embedding_provider=MockEmbeddingProvider(),
             generator=gen,
@@ -328,7 +328,7 @@ class TestReranker:
             def chat(self, messages, temperature=0.0, max_tokens=1024) -> str:
                 raise RuntimeError("API fail")
 
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(),
             embedding_provider=MockEmbeddingProvider(),
             generator=FailingGenerator(),
@@ -351,7 +351,7 @@ class TestFullPipeline:
     def test_retrieve_basic(self):
         """无 rewrite/rerank 时，基础混合检索应正常工作"""
         chunks = make_chunks(10)
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(chunks),
             embedding_provider=MockEmbeddingProvider(),
             generator=None,
@@ -365,7 +365,7 @@ class TestFullPipeline:
     def test_retrieve_backward_compatible(self):
         """不传 generator 时表现与旧版一致"""
         chunks = make_chunks(5)
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(chunks),
             embedding_provider=MockEmbeddingProvider(),
         )
@@ -381,7 +381,7 @@ class TestFullPipeline:
             }
         )
         chunks = make_chunks(20, "肺栓塞诊断相关内容。")
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(chunks),
             embedding_provider=MockEmbeddingProvider(),
             generator=gen,
@@ -399,7 +399,7 @@ class TestFullPipeline:
             }
         )
         chunks = make_chunks(15, "肺栓塞诊断相关内容。")
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(chunks),
             embedding_provider=MockEmbeddingProvider(),
             generator=gen,
@@ -421,7 +421,7 @@ class TestFullPipeline:
             }
         )
         chunks = make_chunks(30, "肺栓塞诊断相关内容。")
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(chunks),
             embedding_provider=MockEmbeddingProvider(),
             generator=gen,
@@ -436,7 +436,7 @@ class TestFullPipeline:
     def test_top_k_more_than_available(self):
         """请求结果多于可用 chunk 时返回全部"""
         chunks = make_chunks(2)
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(chunks),
             embedding_provider=MockEmbeddingProvider(),
             generator=None,
@@ -454,7 +454,7 @@ class TestFullPipeline:
             }
         )
         chunks = make_chunks(5)
-        hr = HybridRetriever(
+        hr = Retriever(
             vector_store=MockVectorStore(chunks),
             embedding_provider=MockEmbeddingProvider(),
             generator=gen,

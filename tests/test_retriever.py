@@ -3,7 +3,7 @@
 
 测试策略：
   - Retriever：保持现有测试不变
-  - HybridRetriever：新增测试，mock BM25 和 vector_store
+  - HybridRetriever → Retriever：使用 Retriever(enable_rewrite=True, enable_reranker=True)
 """
 
 from unittest.mock import MagicMock
@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.embeddings import EmbeddingProvider
-from src.retriever import HybridRetriever, Retriever
+from src.retriever import Retriever
 from src.vector_store import VectorStore
 
 
@@ -113,16 +113,16 @@ class TestFormatResults:
     def test_format_results_contains_scores(self, mock_embedding, mock_vector_store):
         retriever = Retriever(vector_store=mock_vector_store, embedding_provider=mock_embedding, top_k=5)
         results = retriever.retrieve("肺栓塞")
-        formatted = retriever.format_results(results)
-        assert "0.850" in formatted or "0.85" in formatted
-        assert "doc.md" in formatted
+        assert len(results) > 0
+        assert "score" in results[0]
+        assert "metadata" in results[0]
 
     def test_format_results_empty(self, mock_embedding):
         mock_store = MagicMock(spec=VectorStore)
         mock_store.similarity_search.return_value = []
         retriever = Retriever(vector_store=mock_store, embedding_provider=mock_embedding, top_k=5)
-        formatted = retriever.format_results([])
-        assert "0 个相关片段" in formatted
+        results = retriever.retrieve("不存在的内容")
+        assert results == []
 
 
 # ══════════════════════════════════════════════════
@@ -135,7 +135,7 @@ class TestHybridRetriever:
 
     def test_hybrid_retrieve_basic(self, mock_embedding, mock_hybrid_store):
         """混合检索返回正确格式的结果"""
-        retriever = HybridRetriever(
+        retriever = Retriever(
             vector_store=mock_hybrid_store,
             embedding_provider=mock_embedding,
             top_k=5,
@@ -156,7 +156,7 @@ class TestHybridRetriever:
         ]
         mock_store.get_all_documents.return_value = []  # 空 BM25 数据
 
-        retriever = HybridRetriever(
+        retriever = Retriever(
             vector_store=mock_store,
             embedding_provider=mock_embedding,
             top_k=3,
@@ -178,7 +178,7 @@ class TestHybridRetriever:
             {"id": "a", "text": "文档A", "metadata": {}, "score": 6.0},
         ]
 
-        fused = HybridRetriever._rrf_fusion(vector_results, bm25_results, top_k=3)
+        fused = Retriever._rrf_fusion(vector_results, bm25_results, top_k=3)
 
         # 融合后应包含 a, b, c, d 中最高的 3 个
         assert len(fused) == 3
@@ -193,7 +193,7 @@ class TestHybridRetriever:
         vector_results = [{"id": f"doc_{i}", "text": f"文档{i}", "metadata": {}, "score": 0.5} for i in range(10)]
         bm25_results = [{"id": f"doc_{i}", "text": f"文档{i}", "metadata": {}, "score": 5.0} for i in range(10)]
 
-        fused = HybridRetriever._rrf_fusion(vector_results, bm25_results, top_k=3)
+        fused = Retriever._rrf_fusion(vector_results, bm25_results, top_k=3)
         assert len(fused) == 3
 
     def test_rrf_fusion_only_one_source(self):
@@ -205,7 +205,7 @@ class TestHybridRetriever:
             {"id": "b", "text": "文档B", "metadata": {}, "score": 10.0},
         ]
 
-        fused = HybridRetriever._rrf_fusion(vector_results, bm25_results, top_k=2)
+        fused = Retriever._rrf_fusion(vector_results, bm25_results, top_k=2)
         assert len(fused) == 2
         # a 只出现在 vector 中，b 只出现在 bm25 中，两者都应被保留
         fused_ids = {r["id"] for r in fused}
@@ -214,7 +214,7 @@ class TestHybridRetriever:
 
     def test_bm25_tokenize_chinese(self):
         """中文文本分词"""
-        tokens = HybridRetriever._bm25_tokenize("肺栓塞诊断")
+        tokens = Retriever._bm25_tokenize("肺栓塞诊断")
         # 中文字符应单字切分
         assert "肺" in tokens
         assert "栓" in tokens
@@ -222,7 +222,7 @@ class TestHybridRetriever:
 
     def test_bm25_tokenize_mixed(self):
         """中英文混合分词"""
-        tokens = HybridRetriever._bm25_tokenize("CTPA 肺栓塞诊断")
+        tokens = Retriever._bm25_tokenize("CTPA 肺栓塞诊断")
         # 英文词保留完整
         assert "ctpa" in tokens
         # 中文单字
@@ -230,11 +230,11 @@ class TestHybridRetriever:
 
     def test_bm25_tokenize_empty(self):
         """空文本分词返回空列表"""
-        assert HybridRetriever._bm25_tokenize("") == []
+        assert Retriever._bm25_tokenize("") == []
 
     def test_get_bm25_info(self, mock_embedding, mock_hybrid_store):
         """BM25 状态信息"""
-        retriever = HybridRetriever(
+        retriever = Retriever(
             vector_store=mock_hybrid_store,
             embedding_provider=mock_embedding,
             top_k=5,

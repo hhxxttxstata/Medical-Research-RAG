@@ -1,52 +1,37 @@
 # ═══════════════════════════════════════════════════════
 #  Dockerfile — 后端 FastAPI 服务
 # ═══════════════════════════════════════════════════════
-# 构建:  docker build -f Dockerfile.backend -t rag-backend .
-# 运行:  docker run --rm -p 8000:8000 -e DEEPSEEK_API_KEY=sk-xxx rag-backend
-# ═══════════════════════════════════════════════════════
-
-# ── 使用 Python 3.10 轻量镜像（CPU only，Windows 上无需 CUDA） ──
+# 不含 torch / CUDA（诊断模块托管给本地 Python）
 FROM python:3.10-slim
 
-LABEL description="RAG 知识库问答系统 — 后端 API 服务"
+LABEL description="肺栓塞 RAG 问答系统 — 后端 API"
 LABEL version="2.0.0"
 
-# 避免交互式提示
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# ── 配置国内镜像源（加速下载） ──────────────────────
-RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+# ── Debian 国内镜像源 ──────────────────────────
+RUN sed -i 's|deb.debian.org|mirrors.ustc.edu.cn|g' /etc/apt/sources.list.d/debian.sources
 
-# ── 系统依赖（最小集） ──────────────────────────────
+# ── 系统依赖（最小集） ──────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Python 依赖 ────────────────────────────────────
-COPY requirements.txt .
+# ── pip 国内镜像源 ─────────────────────────────
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+
+# ── Python 依赖 ────────────────────────────────
+COPY requirements-docker.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements-docker.txt
 
-# ── 预下载 Embedding 模型 ──────────────────────────
-# 使用 ModelScope 国内镜像避免 HuggingFace 被墙
-RUN pip install --no-cache-dir modelscope && \
-    python -c "\
-from modelscope import snapshot_download; \
-print('⏳ 预下载 Embedding 模型...'); \
-snapshot_download('AI-ModelScope/bge-small-zh-v1.5', cache_dir='/root/.cache/modelscope/hub'); \
-print('✅ Embedding 模型已缓存')"
-
-# ── 复制源码 ──────────────────────────────────────
+# ── 源码 ──────────────────────────────────────
 COPY . .
-
-# 确保运行时目录存在
 RUN mkdir -p /app/data /app/chroma_db /app/logs
 
-# ── 端口 ──────────────────────────────────────────
 EXPOSE 8000
 
-# ── 启动 ──────────────────────────────────────────
 CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${API_PORT:-8000} --log-level info"]

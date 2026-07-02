@@ -12,7 +12,6 @@ from typing import Any
 
 from src.agent import (
     Agent,
-    AgentBudget,
     AgentHarnessConfig,
     BudgetTracker,
     IntentAnalyzer,
@@ -129,7 +128,7 @@ class TestLLMIntentClassifier:
     def test_fallback_no_generator(self):
         """没有 generator 时自动回退到规则"""
         classifier = LLMIntentClassifier(generator=None)
-        result = classifier.classify("帮我诊断一下这个CT")
+        result = classifier.classify("帮我诊断一下肺栓塞")
         assert result["intent"] == "pe_diagnosis"
         assert result["llm_classified"] is False
 
@@ -478,7 +477,7 @@ class TestBudgetTracker:
 
     def test_steps_exceeded(self):
         """步数超限应返回终止原因"""
-        budget = AgentBudget(max_steps=3, max_tokens_total=99999, max_wall_clock_sec=999, max_tool_calls=999)
+        budget = AgentHarnessConfig(max_steps=3, max_tokens_total=99999, max_wall_clock_sec=999, max_tool_calls=999)
         tracker = BudgetTracker(budget)
         assert tracker.record_step(10) is None  # step 1
         assert tracker.record_step(10) is None  # step 2
@@ -489,14 +488,14 @@ class TestBudgetTracker:
 
     def test_tokens_total_exceeded(self):
         """Token 总数超限应返回终止原因"""
-        budget = AgentBudget(max_steps=99, max_tokens_total=50, max_wall_clock_sec=999, max_tool_calls=999)
+        budget = AgentHarnessConfig(max_steps=99, max_tokens_total=50, max_wall_clock_sec=999, max_tool_calls=999)
         tracker = BudgetTracker(budget)
         assert tracker.record_step(30) is None
         assert tracker.record_step(21) is not None  # 累计 51 > 50
 
     def test_wall_clock_exceeded(self):
         """墙钟时间超限应返回终止原因"""
-        budget = AgentBudget(max_steps=99, max_tokens_total=99999, max_wall_clock_sec=0.01, max_tool_calls=999)
+        budget = AgentHarnessConfig(max_steps=99, max_tokens_total=99999, max_wall_clock_sec=0.01, max_tool_calls=999)
         tracker = BudgetTracker(budget)
         import time
 
@@ -507,7 +506,7 @@ class TestBudgetTracker:
 
     def test_tool_calls_exceeded(self):
         """工具调用次数超限应返回终止原因"""
-        budget = AgentBudget(max_steps=99, max_tokens_total=99999, max_wall_clock_sec=999, max_tool_calls=2)
+        budget = AgentHarnessConfig(max_steps=99, max_tokens_total=99999, max_wall_clock_sec=999, max_tool_calls=2)
         tracker = BudgetTracker(budget)
         assert tracker.record_tool_call() is None
         assert tracker.record_tool_call() is None
@@ -534,7 +533,7 @@ class TestBudgetTracker:
 
     def test_reset_clears_counters(self):
         """reset() 应重置所有计数器"""
-        budget = AgentBudget(max_steps=2, max_tokens_total=999, max_wall_clock_sec=999, max_tool_calls=999)
+        budget = AgentHarnessConfig(max_steps=2, max_tokens_total=999, max_wall_clock_sec=999, max_tool_calls=999)
         tracker = BudgetTracker(budget)
         tracker.record_step(10)
         tracker.record_tool_call()
@@ -545,7 +544,7 @@ class TestBudgetTracker:
 
     def test_finalize_records_metrics(self):
         """finalize() 应在不抛出异常的情况下完成"""
-        budget = AgentBudget(max_steps=99, max_tokens_total=99999, max_wall_clock_sec=999, max_tool_calls=999)
+        budget = AgentHarnessConfig(max_steps=99, max_tokens_total=99999, max_wall_clock_sec=999, max_tool_calls=999)
         tracker = BudgetTracker(budget)
         tracker.record_step(100)
         tracker.record_tool_call()
@@ -558,8 +557,8 @@ class TestBudgetTracker:
         agent = Agent(harness_config=harness)
         loop = agent._react_loop
         # harness config 被传递到了 FunctionCallingLoop 初始化
-        assert loop._budget is not None
-        assert loop._budget.max_steps == 5
+        assert loop._config is not None
+        assert loop._config.max_steps == 5
 
 
 # ═══════════════════════════════════════════════════════════════

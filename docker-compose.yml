@@ -1,61 +1,31 @@
 # ═══════════════════════════════════════════════════════
-#  docker-compose.yml — RAG 知识库问答系统完整部署
+#  docker-compose.yml — 肺栓塞 RAG 系统部署
 # ═══════════════════════════════════════════════════════
-
-name: rag-system
-
+#
 # 使用方式:
-#   首次启动:   docker compose up -d
-#   重建镜像:   docker compose build --no-cache
-#   查看日志:   docker compose logs -f
-#   重启后端:   docker compose restart backend
-#   停止:       docker compose down -v
+#   1. 复制 .env，填入 LLM API Key（DeepSeek 推荐）
+#   2. docker compose up -d
+#   3. 打开 http://localhost:7860
 #
-# 访问地址:
-#   后端 API:   http://localhost:8000  (Swagger 文档: /docs)
-#   前端页面:   http://localhost:7860
-#
-# 必须配置:
-#   复制 .env 文件并填入 API Key（至少配置一种 LLM）:
-#     - DeepSeek（推荐，国内可用）
-#     - SiliconFlow（推荐，国内可用）
-#     - OpenAI（需海外网络）
-#
-#   PE 诊断模型（可选）:
-#     将 best.pth 放入 ./models/，容器通过 volume 挂载读取
+# 访问:
+#   前端 Gradio: http://localhost:7860
+#   后端 API:    http://localhost:8000 (Swagger: /docs)
 # ═══════════════════════════════════════════════════════
+
+name: pe-rag-system
 
 services:
-
-  # ── Redis（可选缓存后端） ────────────────
-  redis:
-    image: redis:7-alpine
-    container_name: rag-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 3
-    networks:
-      - rag-network
-
-  # ── 后端：FastAPI 服务（RAG + Agent + 诊断推理） ──
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: rag-backend
+    container_name: backend
     ports:
       - "8000:8000"
     volumes:
-      # 模型权重（只读，避免容器内意外修改）
+      # ponytail: 源码文件用 bind mount 覆盖，改代码后只需 restart，不用 rebuild
+      - ./app.py:/app/app.py:ro
       - ./models:/app/models:ro
-      # 持久化数据（文档库 + 向量数据库 + 日志）
       - ./data:/app/data
       - ./chroma_db:/app/chroma_db
       - ./logs:/app/logs
@@ -64,100 +34,26 @@ services:
     environment:
       - API_PORT=8000
       - API_HOST=0.0.0.0
-      - REDIS_URL=redis://redis:6379/0
-    depends_on:
-      redis:
-        condition: service_started
-      etcd:
-        condition: service_started
-      minio:
-        condition: service_started
-      milvus:
-        condition: service_started
-    # Windows 上 GPU 不可用，已切换为 CPU-only 的 Python 镜像
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/health', timeout=5); assert r.status==200"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 120s   # 模型加载 + 知识库初始化可能需要较长时间
+      start_period: 120s
     restart: unless-stopped
-    networks:
-      - rag-network
 
-  # ── 前端：Gradio 页面（纯展示层，极轻量） ──────────
   frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-    container_name: rag-frontend
+    container_name: frontend
     ports:
       - "7860:7860"
+    volumes:
+      - ./gradio_app.py:/app/gradio_app.py:ro
     environment:
-      # 指向同 docker-compose 网络内的 backend 服务
       - API_BASE_URL=http://backend:8000
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
-    networks:
-      - rag-network
-
-networks:
-  rag-network:
-    driver: bridge
-
-volumes:
-  redis_data:
-  etcd_data:
-  minio_data:
-
-  # ── Milvus 向量数据库（可选，需要时取消注释） ──────────
-  # 启动: docker compose -f docker-compose.yml -f docker-compose.milvus.yml up -d
-  #
-  # etcd:
-  #   image: quay.io/coreos/etcd:v3.5.16
-  #   container_name: rag-etcd
-  #   environment:
-  #     - ETCD_AUTO_COMPACTION_MODE=revision
-  #     - ETCD_AUTO_COMPACTION_RETENTION=1000
-  #     - ETCD_QUOTA_BACKEND_BYTES=4294967296
-  #     - ETCD_SNAPSHOT_COUNT=50000
-  #   volumes:
-  #     - etcd_data:/etcd
-  #   command: etcd --advertise-client-urls=http://0.0.0.0:2379 --listen-client-urls=http://0.0.0.0:2379 --data-dir=/etcd
-  #   networks:
-  #     - rag-network
-  #
-  # minio:
-  #   image: minio/minio:latest
-  #   container_name: rag-minio
-  #   ports:
-  #     - "9000:9000"
-  #     - "9001:9001"
-  #   environment:
-  #     - MINIO_ACCESS_KEY=minioadmin
-  #     - MINIO_SECRET_KEY=minioadmin
-  #   volumes:
-  #     - minio_data:/data
-  #   command: server /data --console-address ":9001"
-  #   networks:
-  #     - rag-network
-  #
-  # milvus:
-  #   image: milvusdb/milvus:v2.4.17
-  #   container_name: rag-milvus
-  #   ports:
-  #     - "19530:19530"
-  #   environment:
-  #     - ETCD_ENDPOINTS=etcd:2379
-  #     - MINIO_ADDRESS=minio:9000
-  #   depends_on:
-  #     - etcd
-  #     - minio
-  #   volumes:
-  #     - ./milvus_db:/var/lib/milvus
-  #   command: milvus run standalone
-  #   networks:
-  #     - rag-network
-  #

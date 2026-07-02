@@ -42,5 +42,12 @@ models/*.pth
 models/*.pt
 models/*.onnx
 
+# 部署脚本（不进入镜像）
+*.bat
+*.ps1
+
+# 记忆文件
+MEMORY.md
+
 # API 密钥（运行时通过 docker-compose env_file 注入）
 .env
