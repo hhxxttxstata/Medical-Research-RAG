@@ -31,16 +31,21 @@ API_DIAGNOSIS = f"{API_BASE}/diagnosis/predict"
 
 TITLE = "🩺 肺栓塞智能问诊系统"
 
+# ── 跨会话记忆：持久的 session_id ──────────────────────
+_SESSION_ID: str = ""
+
 # ══════════════════════════════════════════════════════════════════
 #  后端辅助函数（保持不变）
 # ══════════════════════════════════════════════════════════════════
 
 
-def _api_json(url: str, data: dict) -> dict:
+def _api_json(url: str, data: dict, session_id: str = "") -> dict:
     """POST JSON 到 API"""
     body = json.dumps(data).encode("utf-8")
     req = urllib.request.Request(url, data=body, method="POST")
     req.add_header("Content-Type", "application/json")
+    if session_id:
+        req.add_header("X-Session-ID", session_id)
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
             return json.loads(resp.read())
@@ -247,13 +252,14 @@ def _needs_knowledge_analysis(question: str) -> bool:
 def smart_entry(
     question: str,
     file: Any | None,
-    top_k: int,
+    top_k: int | None,
     history: list,
 ) -> Any:
     """统一入口：自动判断走诊断还是问答
 
     返回 (history, gallery_list)
     """
+    global _SESSION_ID
     has_file = file is not None
     has_text = bool(question and question.strip())
 
@@ -281,7 +287,9 @@ def smart_entry(
 
 def _handle_chat_only(question: str, top_k: int, history: list) -> list:
     """纯文本问答"""
-    result = _api_json(API_CHAT, {"question": question, "mode": "auto", "top_k": top_k})
+    global _SESSION_ID
+    result = _api_json(API_CHAT, {"question": question, "mode": "auto", "top_k": top_k}, _SESSION_ID)
+    _SESSION_ID = result.get("session_id", _SESSION_ID)
     parts = _format_chat_response_parts(result)
     history.append({"role": "user", "content": question})
     history.append({"role": "assistant", "content": "\n".join(parts)})
@@ -296,6 +304,7 @@ def _handle_diagnosis_with_chat(
     history: list,
 ) -> tuple:
     """影像诊断 + 可选知识联动，返回 (history, gallery_list)"""
+    global _SESSION_ID
     diag_result = _multipart_post(API_DIAGNOSIS, filepath, filename)
     diagnosis_report = _build_diagnosis_markdown(diag_result, filename)
     saved_images = _save_viz_images(diag_result)
@@ -316,7 +325,8 @@ def _handle_diagnosis_with_chat(
     # 知识库联动
     if _needs_knowledge_analysis(question):
         rag_question = f"{question}\n\n【诊断结果】{diagnosis_report}\n\n请结合以上诊断结果和知识库，给出综合分析。"
-        rag_result = _api_json(API_CHAT, {"question": rag_question, "mode": "auto", "top_k": top_k})
+        rag_result = _api_json(API_CHAT, {"question": rag_question, "mode": "auto", "top_k": top_k}, _SESSION_ID)
+        _SESSION_ID = rag_result.get("session_id", _SESSION_ID)
         rag_answer = rag_result.get("answer", "")
         if rag_answer:
             answer_parts.extend(
@@ -377,7 +387,7 @@ def _on_multimodal_submit(msg: dict, history: list):
     text = msg.get("text", "")
     files = msg.get("files", [])
     file_path = files[0] if files else None
-    result_history, gallery = smart_entry(text, file_path, 5, history)
+    result_history, gallery = smart_entry(text, file_path, None, history)
     # 更新 gallery 可见性
     has_gallery = gallery is not None and len(gallery) > 0
     return result_history, gr.update(value=gallery, visible=has_gallery)

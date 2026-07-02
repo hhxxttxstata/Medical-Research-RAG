@@ -6,18 +6,19 @@
     │
     ├─ 1. MetadataExtractor ── 提取标题、作者、摘要、DOI、一级标题结构
     │
-    ├─ 2. OCRController ────── 检测是否为扫描件，是则调用 OCR 兜底
+    ├─ 2. MarkerParser ──────── Marker PDF→结构化 Markdown（内置 Surya OCR）
+    │      │                     若未安装则回退：2a+2b
+    │      ├─ 2a. OCRController ── 扫描件检测 + Tesseract 兜底
+    │      └─ 2b. MarkdownConverter ─ 多栏/表格/图片占位 → Markdown
     │
-    ├─ 3. MarkdownConverter ── 多栏检测 + 表格保留 + 图片占位 → 结构化 Markdown
-    │
-    └─ 4. SmartChunker ─────── Small-to-Big 切分
-         ├─ small chunks (200-300字) → 用于向量检索
-         └─ parent chunks (1000-2000字) → 用于 LLM 上下文注入
+    └─ 3. SmartChunker ──────── Section-aware Small-to-Big 切分
+         ├─ small chunks (200-500字) → 用于向量检索
+         └─ parent chunks (800-2000字) → 用于 LLM 上下文注入
 
 面试价值：
-  - 医疗论文场景的全套工程化方案：扫描件、双栏、表格、图片全覆盖
+  - Marker 一条龙：OCR + 表格 + 公式 + 多栏，业界最佳 PDF→Markdown 方案
   - Small-to-Big 架构在业界 RAG 应用中是最佳实践（LlamaIndex 的核心策略）
-  - 所有依赖可选，无 OCR 环境自动降级
+  - 所有依赖可选，无 Marker 环境自动降级
 """
 
 import os
@@ -105,12 +106,12 @@ class MetadataExtractor:
 
 
 # ═══════════════════════════════════════════════════════════════
-#  二、OCR 控制器
+#  二、OCR 控制器（回退方案）
 # ═══════════════════════════════════════════════════════════════
 
 
 class OCRController:
-    """OCR 识别控制器
+    """OCR 识别控制器（Marker 不可用时的回退方案）
 
     判断 PDF 是否为扫描件（不可提取文本），是则用 Tesseract OCR 兜底。
 
@@ -165,11 +166,79 @@ class OCRController:
 
 
 # ═══════════════════════════════════════════════════════════════
-#  三、Markdown 转换器
+#  三、Marker PDF 解析器（主路径）
+# ═══════════════════════════════════════════════════════════════
+
+
+class MarkerParser:
+    """Marker PDF → 结构化 Markdown（内置 Surya OCR）
+
+    Marker 一条龙解决：
+      - 文字层提取（替代 PyMuPDF raw text）
+      - 扫描件 OCR（替代 Tesseract）
+      - 表格/公式/多栏/图片占位（替代 MarkdownConverter）
+      - 章节结构输出为 H1/H2/H3 heading（供 SmartChunker section-aware 切分）
+
+    安装：pip install marker-pdf
+    GPU 可选，CPU 也能跑（慢但能 work）。
+    """
+
+    def __init__(self):
+        self._available = None
+
+    @property
+    def available(self) -> bool:
+        if self._available is None:
+            try:
+                from marker.converters.pdf import PdfConverter  # noqa: F401
+
+                self._available = True
+            except ImportError:
+                self._available = False
+        return self._available
+
+    def parse(self, file_path: str) -> dict[str, Any]:
+        """用 Marker 解析 PDF，返回结构化结果
+
+        Returns:
+            {
+                "full_text": str,        # 完整 Markdown（含 heading 层级）
+                "images": dict,          # 提取的图片 {filename: base64}
+                "metadata": dict,        # Marker 提取的元数据
+                "pages": list[dict],     # 兼容旧接口
+            }
+        """
+        from marker.converters.pdf import PdfConverter
+        from marker.models import create_model_dict
+
+        converter = PdfConverter(artifact_dict=create_model_dict())
+        rendered = converter(file_path)
+
+        full_text = rendered.markdown
+        images = rendered.images or {}
+        meta = rendered.metadata or {}
+
+        # 构建兼容旧接口的 pages 列表
+        pages = []
+        for page_num, page_text in enumerate(full_text.split("\n\n"), start=1):
+            if page_text.strip():
+                pages.append({"page": page_num, "text": page_text.strip()})
+
+        return {
+            "full_text": full_text,
+            "images": images,
+            "metadata": meta,
+            "pages": pages,
+        }
+
+
+# ═══════════════════════════════════════════════════════════════
+#  四、Markdown 转换器（回退方案）
 # ═══════════════════════════════════════════════════════════════
 
 
 class MarkdownConverter:
+    """将 PDF 原始文本转换为结构化 Markdown（Marker 不可用时的回退）"""
     """将 PDF 原始文本转换为结构化 Markdown
 
     处理策略：
@@ -420,7 +489,7 @@ class MarkdownConverter:
 
 
 # ═══════════════════════════════════════════════════════════════
-#  四、Small-to-Big 智能切分器
+#  五、Section-aware SmartChunker
 # ═══════════════════════════════════════════════════════════════
 
 
@@ -439,36 +508,37 @@ class ChunkNode:
 
 
 class SmartChunker:
-    """Small-to-Big 智能切分器
+    """Section-aware Small-to-Big 切分器
 
     核心思想：
       - small chunks（200-500 字）→ 用于向量检索（精度高）
       - parent chunks（1000-2000 字）→ 检索到 small chunk 后，
         连带其 parent chunk 一起送入 LLM（上下文完整）
 
+    Section-aware：识别 H1/H2/H3 heading 构建文档树，每个 chunk 带上
+    所属章节标题，检索时可按章节 scope 过滤，回答也更精确。
+
     架构：
       Document
-        └─ Section 1
+        └─ Section 1 (H1/H2)
              ├─ Paragraph 1.1
-             │    ├─ Sentence A  (small chunk, 带 parent_id=P1.1)
-             │    ├─ Sentence B  (small chunk, 带 parent_id=P1.1)
-             │    └─ Sentence C  (small chunk, 带 parent_id=P1.1)
-             │    └─ [Parent chunk P1.1 = Paragraph 1.1 全文]
+             │    ├─ Sentence A  (small chunk, 带 heading=Section 1)
+             │    ├─ Sentence B  (small chunk, 带 heading=Section 1)
+             │    └─ [Parent chunk = Paragraph 1.1 + context]
              └─ Paragraph 1.2
-                  ├─ ...
 
     中文文档阈值：
-      - small: 200-300 字符
-      - parent: 1000-1500 字符
+      - small: 300-500 字符
+      - parent: 800-2000 字符
     英文文档自动 x2。
     """
 
     def __init__(
         self,
-        small_min: int = 200,
-        small_max: int = 300,
-        parent_min: int = 1000,
-        parent_max: int = 1500,
+        small_min: int = 300,
+        small_max: int = 500,
+        parent_min: int = 800,
+        parent_max: int = 2000,
         overlap: int = 30,
     ):
         self.small_min = small_min
@@ -522,11 +592,18 @@ class SmartChunker:
         return small_chunks, parent_chunks
 
     def _build_tree(self, text: str, doc_metadata: dict[str, Any]) -> list[ChunkNode]:
-        """将 Markdown 文本解析为层级节点树"""
+        """将 Markdown 文本解析为 section-aware 层级节点树
+
+        识别 H1/H2/H3 heading 作为章节边界，构建 3 层树：
+          level=1 → section (H1/H2 heading)
+          level=2 → paragraph
+          level=3 → sentence (由 _make_small_chunks 进一步切分)
+        """
         lines = text.split("\n")
         nodes: list[ChunkNode] = []
 
         current_section = ""
+        current_subsection = ""
         current_paragraph: list[str] = []
         para_start = 0
 
@@ -534,11 +611,12 @@ class SmartChunker:
             if current_paragraph:
                 para_text = "\n".join(current_paragraph).strip()
                 if para_text:
+                    heading = current_subsection or current_section
                     nodes.append(
                         ChunkNode(
                             level=2,
                             text=para_text,
-                            heading=current_section,
+                            heading=heading,
                             start_char=para_start,
                             end_char=end_char,
                         )
@@ -549,24 +627,31 @@ class SmartChunker:
             stripped = line.strip()
             line_len = len(line) + 1  # +1 for \n
 
-            if line.startswith("## "):
-                # 章节标题
+            # 检测 Markdown heading（H1/H2/H3）
+            heading_match = re.match(r"^(#{1,3})\s+(.+)", stripped)
+            if heading_match:
                 flush_paragraph(char_pos)
-                current_section = stripped[3:].strip()
+                level = len(heading_match.group(1))  # 1, 2, or 3
+                title = heading_match.group(2).strip()
+                if level == 1:
+                    current_section = title
+                    current_subsection = ""
+                else:
+                    current_subsection = title
                 current_paragraph = []
                 para_start = char_pos + line_len
 
+                heading_text = current_subsection or current_section
                 nodes.append(
                     ChunkNode(
                         level=1,
-                        text=current_section,
-                        heading=current_section,
+                        text=heading_text,
+                        heading=heading_text,
                         start_char=char_pos,
                         end_char=char_pos + line_len,
                     )
                 )
             elif stripped == "":
-                # 空行 = 段落边界
                 flush_paragraph(char_pos)
                 current_paragraph = []
                 para_start = char_pos + line_len
@@ -765,12 +850,15 @@ class SmartChunker:
 
 
 # ═══════════════════════════════════════════════════════════════
-#  五、文档处理管线总入口
+#  六、文档处理管线总入口
 # ═══════════════════════════════════════════════════════════════
 
 
 def process_document(file_path: str) -> dict[str, Any]:
     """文档处理管线入口
+
+    主路径：Marker PDF → 结构化 Markdown → Smart Chunking
+    回退路径：PyMuPDF → OCR 检测 → MarkdownConverter → Smart Chunking
 
     Args:
         file_path: PDF/MD/TXT 文件路径
@@ -787,47 +875,108 @@ def process_document(file_path: str) -> dict[str, Any]:
     """
     from .document_loader import load_document
 
-    # 1. 基础解析（复用现有 load_document）
-    doc = load_document(file_path)
-    raw_text = doc.get("full_text", "")
-    pages = doc.get("pages", [])
-    filename = doc.get("filename", os.path.basename(file_path))
+    filename = os.path.basename(file_path)
+    suffix = os.path.splitext(filename)[1].lower()
+    use_marker = False  # 是否用 Marker 主路径
+
+    # ── MD/TXT 文件：直接走文本加载 ──
+    if suffix in (".md", ".txt"):
+        doc = load_document(file_path)
+        raw_text = doc.get("full_text", "")
+        pages = doc.get("pages", [])
+    else:
+        # ── PDF 文件：Marker 主路径 → 回退管线 ──
+        marker = MarkerParser()
+        if marker.available:
+            print(f"  🧠 Marker 解析: {filename}")
+            try:
+                result = marker.parse(file_path)
+                raw_text = result["full_text"]
+                pages = result["pages"]
+                use_marker = True
+                doc = {
+                    "filename": filename,
+                    "file_path": file_path,
+                    "file_type": "pdf",
+                    "total_pages": len(pages),
+                    "pages": pages,
+                    "full_text": raw_text,
+                }
+            except Exception as e:
+                print(f"  ⚠️ Marker 解析失败 ({e})，回退到 PyMuPDF 管线")
+
+        if not use_marker:
+            doc = load_document(file_path)
+            raw_text = doc.get("full_text", "")
+            pages = doc.get("pages", [])
+
+            # 清理排版软件遗留的不可见控制字符（回退路径需要，Marker 已自带清理）
+            raw_text = _sanitize_text(raw_text)
+            pages = [{"page": p["page"], "text": _sanitize_text(p["text"])} for p in pages]
+            doc["full_text"] = raw_text
+            doc["pages"] = pages
 
     # 2. 元数据提取
     metadata = MetadataExtractor.extract(raw_text, filename)
     metadata["file_path"] = file_path
 
-    # 3. OCR 检测
-    ocr = OCRController()
-    if ocr.available and ocr.is_scanned(raw_text, len(pages)):
-        print("  🔍 检测为扫描件，启用 OCR...")
-        # 对扫描件：从 PDF 提取图片 → OCR
-        scanned_text = _ocr_pdf(file_path, ocr)
-        if scanned_text:
-            raw_text = scanned_text
-            # 重新提取元数据
-            metadata.update(MetadataExtractor.extract(scanned_text, filename))
+    # 3. OCR 检测（仅回退路径，Marker 自带 Surya OCR）
+    if not use_marker and suffix == ".pdf":
+        ocr = OCRController()
+        if ocr.available and ocr.is_scanned(raw_text, len(pages)):
+            print("  🔍 检测为扫描件，启用 OCR...")
+            scanned_text = _ocr_pdf(file_path, ocr)
+            if scanned_text:
+                raw_text = scanned_text
+                metadata.update(MetadataExtractor.extract(scanned_text, filename))
 
-    # 4. Markdown 转换
-    markdown_text = MarkdownConverter.convert(pages, metadata)
-    if not markdown_text.strip() and raw_text.strip():
+    # 4. Markdown 转换（仅回退路径，Marker 已输出 Markdown）
+    if use_marker:
         markdown_text = raw_text
+    else:
+        markdown_text_input = raw_text  # 保持原始变量名向后兼容
+        markdown_text = MarkdownConverter.convert(pages, metadata)
+        if not markdown_text.strip() and markdown_text_input.strip():
+            markdown_text = markdown_text_input
 
-    # 5. Smart Chunking（已优化参数：中文 small=300-500, parent=800-2000）
+    # 5. Smart Chunking——按文件大小动态缩放阈值
     chunker = SmartChunker()
     is_en = metadata.get("is_english", False)
-    small_min = 300 if not is_en else 500
-    small_max = 500 if not is_en else 800
-    parent_min = 800 if not is_en else 1500
-    parent_max = 2000 if not is_en else 3500
-    chunker.small_min = small_min
-    chunker.small_max = small_max
-    chunker.parent_min = parent_min
-    chunker.parent_max = parent_max
+
+    base_small_min = 300 if not is_en else 500
+    base_small_max = 500 if not is_en else 800
+    base_parent_min = 800 if not is_en else 1500
+    base_parent_max = 2000 if not is_en else 3500
+
+    file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    if file_size_mb >= 20:
+        scale = 4.0
+    elif file_size_mb >= 10:
+        scale = 3.0
+    elif file_size_mb >= 5:
+        scale = 2.0
+    elif file_size_mb >= 2:
+        scale = 1.5
+    else:
+        scale = 1.0
+
+    if scale > 1.0:
+        print(f"  📐 大文件自适应: {file_size_mb:.1f}MB → chunk 阈值缩放 {scale}x")
+
+    chunker.small_min = int(base_small_min * scale)
+    chunker.small_max = int(base_small_max * scale)
+    chunker.parent_min = int(base_parent_min * scale)
+    chunker.parent_max = int(base_parent_max * scale)
 
     small_chunks, parent_chunks = chunker.chunk(markdown_text, metadata)
 
-    # 6. 汇总统计
+    # 6. 每篇文档最多 MAX_CHUNKS_PER_DOC 个 small chunk
+    MAX_CHUNKS_PER_DOC = 80
+    if len(small_chunks) > MAX_CHUNKS_PER_DOC:
+        print(f"  ⚠️ Small chunks ({len(small_chunks)}) 超过上限 ({MAX_CHUNKS_PER_DOC})，截断保留前 {MAX_CHUNKS_PER_DOC} 个")
+        small_chunks = small_chunks[:MAX_CHUNKS_PER_DOC]
+
+    # 7. 汇总统计
     print(f"  📊 元数据: 标题={metadata.get('title', '')[:50]}...")
     print(f"  📊 段落数: {len(metadata.get('sections', []))}")
     print(f"  📊 Small chunks: {len(small_chunks)} | Parent chunks: {len(parent_chunks)}")
@@ -840,6 +989,34 @@ def process_document(file_path: str) -> dict[str, Any]:
         "small_chunks": small_chunks,
         "parent_chunks": parent_chunks,
     }
+
+
+def _sanitize_text(text: str) -> str:
+    """清理排版软件遗留的不可见/控制字符
+
+    移除以下字符：
+      - Unicode 私用区（PUA, U+E000–U+F8FF）：Adobe InDesign 排版控制字符
+      - 除换行外的 Cc 类控制字符（如退格、响铃等）
+      - 零宽字符（零宽空格/连词/断词等）
+    """
+    chars = []
+    for ch in text:
+        cp = ord(ch)
+        # 保留正常字符
+        if cp == 0x0A:  # 换行
+            chars.append(ch)
+        elif cp >= 0x20 and cp < 0x7F:  # ASCII 可见
+            chars.append(ch)
+        elif cp >= 0xA0 and cp < 0xD7FF:  # BMP 非私用区
+            chars.append(ch)
+        elif cp >= 0xE000 and cp <= 0xF8FF:  # PUA 私用区 → 丢弃
+            continue
+        elif cp >= 0x10000 and cp <= 0x10FFFF:  # 补充平面
+            chars.append(ch)
+        # 其他控制字符（除换行外）→ 丢弃
+        elif cp != 0x0A:
+            continue
+    return "".join(chars)
 
 
 def _ocr_pdf(pdf_path: str, ocr: OCRController) -> str:

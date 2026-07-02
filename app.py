@@ -16,10 +16,12 @@ import concurrent.futures
 import json
 import os
 import sys
+import threading
 import time
 import uuid
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 # Windows GBK 兼容
 if sys.platform == "win32":
@@ -39,7 +41,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from src.agent import Agent
+from src.agent import Agent, AgentHarnessConfig
 from src.auth import verify_admin_api_key, verify_api_key
 
 # ── 缓存 ────────────────────────────────────────────
@@ -78,7 +80,7 @@ class Settings:
     log_dir: str = os.path.abspath("logs")
     embedding_provider: str = "local"  # local | openai
     embedding_model: str | None = None  # 默认 BAAI/bge-small-zh-v1.5
-    top_k: int = 5
+    top_k: int = 20
     chunk_min_chars: int = 300
     chunk_max_chars: int = 500
     agent_mode: bool = True  # /chat 默认启用 Agent 模式
@@ -96,6 +98,35 @@ diagnosis_model: CTPADiagnosisModel | None = None
 cache_manager = None  # CacheManager 实例
 reranker = None  # CrossEncoderReranker 实例
 watcher = None  # DocumentWatcher 实例
+
+# ── HITL（Human-in-the-Loop）确认状态 ──
+# session_id → {"event": threading.Event, "action": None}
+_hitl_confirmations: dict[str, dict[str, Any]] = {}
+_HITL_TIMEOUT = 120.0  # 确认超时(秒)
+
+
+def _hitl_confirm(policy_results: list, session_id: str) -> bool:
+    """Blocking HITL 确认回调 — Agent 线程在此等待用户确认
+
+    Args:
+        policy_results: [(tool_call_dict, policy_result_dict), ...]
+        session_id: 会话 ID
+
+    Returns:
+        True = 用户确认执行 / False = 用户拒绝或超时
+
+    前端流程:
+        1. Agent 调用 confirm_handler → 线程在此 wait()
+        2. 前端 POST /confirm-tool → event.set()
+        3. wait() 返回 → Agent 继续执行
+    """
+    evt = threading.Event()
+    _hitl_confirmations[session_id] = {"event": evt, "result": None, "action": "pending"}
+    ok = evt.wait(timeout=_HITL_TIMEOUT)
+    state = _hitl_confirmations.pop(session_id, {})
+    if not ok:
+        return False  # 超时 -> 拒绝
+    return state.get("action") == "confirm"
 
 # 诊断上传临时目录
 _DIAGNOSIS_UPLOAD_DIR = os.path.abspath("data/diagnosis_uploads")
@@ -126,6 +157,7 @@ class ChatResponse(BaseModel):
     is_refusal: bool = False
     agent_info: dict | None = None
     process_log: list = []
+    session_id: str = ""
 
 
 class HealthResponse(BaseModel):
@@ -258,7 +290,7 @@ async def startup():
         print(f"\n📚 知识库已就绪: {count} 个 Chunk")
 
     # 初始化 Agent
-    agent = Agent(rag_pipeline=pipeline)
+    agent = Agent(rag_pipeline=pipeline, harness_config=AgentHarnessConfig(confirm_handler=_hitl_confirm))
     agent.tools["generate_report"].set_generator(pipeline.generator)
 
     # 初始化记忆系统（复用 embedding 模型做长期记忆向量化）
@@ -530,6 +562,7 @@ async def chat(req: ChatRequest, request: Request, _: None = Depends(verify_api_
             elapsed=0.0,
             is_refusal=True,
             process_log=[{"step": "安全检查", "detail": injection_reason, "status": "blocked"}],
+            session_id=session_id,
         )
 
     if mode == "rag":
@@ -568,6 +601,7 @@ async def chat(req: ChatRequest, request: Request, _: None = Depends(verify_api_
             elapsed=elapsed,
             is_refusal=result.get("is_refusal", False),
             process_log=log,
+            session_id=session_id,
         )
 
     elif mode == "agent":
@@ -587,7 +621,7 @@ def _sync_agent_mode(
     if report_type:
         log.append({"step": "模式选择", "detail": f"Agent 模式（指定报告类型: {report_type}）", "status": "ok"})
         log.append({"step": "意图识别", "detail": f"跳过识别，直接使用指定类型: {report_type}", "status": "ok"})
-        k = top_k or 8
+        k = top_k or settings.top_k
         log.append({"step": "检索知识库", "detail": f"top_k={k}", "status": "running"})
         retrieved = pipeline.retriever.retrieve(question, top_k=k)
         log.append({"step": "检索知识库", "detail": f"检索到 {len(retrieved)} 个相关片段", "status": "ok"})
@@ -622,6 +656,7 @@ def _sync_agent_mode(
                 "tool": "generate_report",
             },
             process_log=log,
+            session_id=session_id,
         )
 
     # 自动意图识别（带 session_id 启用记忆）
@@ -667,6 +702,7 @@ def _sync_agent_mode(
                     "react_termination": intent_result.get("react_termination"),
                 },
                 process_log=log,
+                session_id=session_id,
             )
 
         # 报告生成类工具
@@ -696,6 +732,7 @@ def _sync_agent_mode(
                 "react_termination": intent_result.get("react_termination"),
             },
             process_log=log,
+            session_id=session_id,
         )
     else:
         log.append({"step": "意图识别", "detail": "未匹配到专用工具", "status": "ok"})
@@ -720,6 +757,7 @@ def _sync_agent_mode(
             is_refusal=result.get("is_refusal", False),
             agent_info={"intent": "normal_query", "fallback_to_rag": True},
             process_log=log,
+            session_id=session_id,
         )
 
 
@@ -729,7 +767,7 @@ def _sync_auto_mode(question: str, top_k: int, start: float, session_id: str = "
 
     # Agent 自动判断（LLM 分类，规则兜底）
     log.append({"step": "模式选择", "detail": "Auto 模式（Agent 优先）", "status": "ok"})
-    intent_result = agent.process(question, top_k=top_k or 8, session_id=session_id)
+    intent_result = agent.process(question, top_k=top_k or settings.top_k, session_id=session_id)
 
     if intent_result.get("agent_handled"):
         intent_info = intent_result.get("intent", {})
@@ -759,6 +797,7 @@ def _sync_auto_mode(question: str, top_k: int, start: float, session_id: str = "
                     "react_steps": intent_result.get("react_steps"),
                 },
                 process_log=log,
+                session_id=session_id,
             )
 
         # 报告生成
@@ -786,11 +825,12 @@ def _sync_auto_mode(question: str, top_k: int, start: float, session_id: str = "
                 "tool": tool_name,
             },
             process_log=log,
+            session_id=session_id,
         )
 
     # Agent 不处理 → 回退到 RAG
     log.append({"step": "Agent判断", "detail": "未匹配专用工具，转为 RAG 问答", "status": "ok"})
-    log.append({"step": "检索知识库", "detail": f"top_k={top_k or 5}", "status": "running"})
+    log.append({"step": "检索知识库", "detail": f"top_k={top_k or settings.top_k}", "status": "running"})
     result = pipeline.query(question, top_k=top_k)
     log.append({"step": "检索知识库", "detail": f"检索到 {len(result.get('sources', []))} 个相关片段", "status": "ok"})
     log.append(
@@ -818,6 +858,7 @@ def _sync_auto_mode(question: str, top_k: int, start: float, session_id: str = "
         elapsed=elapsed,
         is_refusal=result.get("is_refusal", False),
         process_log=log,
+        session_id=session_id,
     )
 
 
@@ -847,6 +888,53 @@ class DiagnosisModelStatus(BaseModel):
     input_shape: list = []
     threshold: float = 0.5
     error: str | None = None
+
+
+class ConfirmToolRequest(BaseModel):
+    model_config = {"strict": True}
+    session_id: str = Field(..., description="会话 ID，来自 /chat 返回的 session_id")
+    action: str = Field(..., pattern=r"^(confirm|reject)$", description="confirm 或 reject")
+
+
+class ConfirmToolResponse(BaseModel):
+    model_config = {"strict": True}
+    success: bool
+    message: str
+    session_id: str
+
+
+@limiter.limit("30/minute")
+@app.post("/confirm-tool", response_model=ConfirmToolResponse)
+async def confirm_tool(req: ConfirmToolRequest, request: Request):
+    """Human-in-the-Loop 确认端点
+
+    当 Agent 调用诊断工具时，因 access_level="confirm" 会暂停并等待确认。
+    前端在收到 pending 后，调用此端点放行或拒绝。
+
+    Body:
+        session_id: /chat 返回的 session_id（必须匹配）
+        action: "confirm" 或 "reject"
+
+    返回:
+        success: 是否操作成功
+        message: 说明
+    """
+    sid = req.session_id
+    state = _hitl_confirmations.get(sid)
+    if state is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"未找到会话 {sid} 的待确认操作——可能已超时或从未请求。",
+        )
+
+    state["action"] = req.action
+    state["event"].set()
+
+    return ConfirmToolResponse(
+        success=True,
+        message=f"工具调用已{'确认' if req.action == 'confirm' else '拒绝'}。",
+        session_id=sid,
+    )
 
 
 @limiter.limit("5/minute")

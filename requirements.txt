@@ -5,8 +5,12 @@ chromadb
 # Embedding 模型
 sentence-transformers==3.0.1
 
-# PDF 解析
+# PDF 解析（PyMuPDF 纯文本回退）
 pypdf==4.3.1
+
+# Marker PDF → 结构化 Markdown（主解析路径，内置 Surya OCR）
+# 可选：不安装 Marker 则自动回退到 PyMuPDF + Tesseract + 规则管线
+marker-pdf>=0.3.0
 
 # OpenAI API（可选，用于大模型生成）
 openai==1.30.0

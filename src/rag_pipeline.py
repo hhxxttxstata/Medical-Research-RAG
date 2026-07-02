@@ -22,7 +22,7 @@ from .monitoring.metrics import record_kb_size, record_request
 
 # ── 可观测性 ────────────────────────────────────────
 from .monitoring.tracing import get_current_span_id, get_current_trace_id, get_tracer
-from .retriever import HybridRetriever, Retriever
+from .retriever import Retriever
 from .text_splitter import split_document
 from .vector_store import VectorStore, create_vector_store
 
@@ -95,9 +95,9 @@ class RAGPipeline:
         self.generator = create_generator()
         self.logger = get_logger()
 
-        # 根据 mode 选择检索器
+        # 根据 mode 选择检索配置
         if retriever_mode == "hybrid":
-            self.retriever = HybridRetriever(
+            self.retriever = Retriever(
                 vector_store=self.vector_store,
                 embedding_provider=self.embedding_provider,
                 top_k=top_k,
@@ -113,6 +113,9 @@ class RAGPipeline:
                 vector_store=self.vector_store,
                 embedding_provider=self.embedding_provider,
                 top_k=top_k,
+                generator=None,
+                enable_rewrite=False,
+                enable_reranker=False,
             )
 
     def close(self):

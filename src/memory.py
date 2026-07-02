@@ -440,15 +440,13 @@ class MemoryManager:
 
     @staticmethod
     def _summarize_preference(query: str, answer: str) -> str:
-        """从问答中归纳可长期记忆的偏好
+        """从问答中归纳可长期记忆的信息
 
         规则启发式（不用 LLM，避免额外成本）：
-        - 如果 query 中包含"偏好""喜欢""习惯"等词，直接记录
-        - 如果 query 较长且不含否定词，提取关键信息
-        - 过于通用的 query 不记录
+        - 直接偏好表达（"喜欢""偏好"等）直接记录
+        - 每个有实质内容的问答都记录用户关注主题
         """
         query_lower = query.lower().strip()
-        # 太短的不记
         if len(query) < 8:
             return ""
 
@@ -464,8 +462,8 @@ class MemoryManager:
             if m in query:
                 return ""
 
-        # 较长的知识性提问，记录用户感兴趣的主题
-        if len(query) > 20 and len(answer) > 50:
+        # 只要有实质内容就记录（跨 session 可复用的知识）
+        if len(query) > 10 and len(answer) > 30:
             topic = query[:100].strip()
             return f"用户关注: {topic}"
 

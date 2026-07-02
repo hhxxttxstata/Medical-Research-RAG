@@ -39,7 +39,7 @@ class CrossEncoderReranker:
     def __init__(self, model_name: str | None = None, batch_size: int = 64):
         self._model_name = model_name or os.getenv("RERANKER_MODEL", self.MODEL_NAME)
         self._batch_size = batch_size
-        self._loaded = False
+        self._loaded = True
         self._load_error: str | None = None
 
     # ── 模型加载 ──────────────────────────────────────

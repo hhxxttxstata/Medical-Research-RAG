@@ -32,124 +32,91 @@ from .tools.diagnosis_tool import DiagnosisTool
 from .tools.report_generator import ReportGenerator
 
 # ════════════════════════════════════════════════════════════════
-#  零、Bounded Agent Loop — 四维预算追踪
+#  零、Bounded Agent Loop — 预算追踪
 # ════════════════════════════════════════════════════════════════
 
 
 @dataclass
-class AgentBudget:
-    """Agent 资源预算阈值
+class AgentHarnessConfig:
+    """Agent 运行时配置 — 预算 + 安全 + 压缩
 
-    四维限制（面试讲解）：
-      - 步数（白盒）：已做的每一步我们都能枚举
-      - Token（灰盒）：靠 tiktoken 估算，非精确
-      - 墙钟时间（黑盒）：只看真实世界过了多久
-      - 工具调用次数（白盒）：审计所有外部调用
-
-    默认值适用于医学 RAG 问答场景。对需要多步推理的诊断场景可放宽。
+    一次性注入所有 Harness 层参数，避免分散到各 __init__ 中。
     """
 
     max_steps: int = 10
     """最大推理步数"""
-    max_tokens_per_step: int = 4096
-    """单步 LLM 回复最大 Token 数"""
     max_tokens_total: int = 16384
     """会话累计 Token 上限"""
     max_wall_clock_sec: float = 120.0
     """墙钟时间上限（秒）"""
     max_tool_calls: int = 20
     """工具调用总次数上限"""
+    dead_loop_threshold: int = 3
+    """连续重复操作触发死循环检测的阈值"""
+
+    # ── 上下文压缩 ──
+    enable_compression: bool = True
+
+    # ── 安全策略 ──
+    confirm_handler: Callable | None = None
+    """Human-in-the-Loop 确认回调"""
 
 
 class BudgetTracker:
-    """Bounded Agent Loop 预算跟踪器
+    """Agent 预算跟踪器（步数 / Token / 墙钟 / 工具调用次数）
 
-    在每步推理前后调用 check_* 方法，返回 None = 正常, 字符串 = 终止原因。
-
-    使用方式:
-        budget = AgentBudget(...)
-        tracker = BudgetTracker(budget)
-        for step in range(...):
-            reason = tracker.record_step(step_tokens)
-            if reason: return _build_result(success=False, termination_reason=reason)
-            reason = tracker.record_tool_call()
-            if reason: ...
+    每步推理前后调用 check_* 方法，返回 None = 正常, 字符串 = 终止原因。
     """
 
-    def __init__(self, budget: AgentBudget | None = None):
-        self.budget = budget or AgentBudget()
+    def __init__(self, config: AgentHarnessConfig | None = None):
+        self.cfg = config or AgentHarnessConfig()
         self.reset()
 
     def reset(self):
-        """重置所有计数器（开始新会话时调用）"""
         self.step_count: int = 0
         self.token_count: int = 0
         self.tool_call_count: int = 0
         self._start_time: float = time.monotonic()
 
-    # ── 检查方法 ────────────────────────────────────
-
     def record_step(self, tokens: int = 0) -> str | None:
-        """记录一步，返回 None（正常）或终止原因（需停止）
-
-        Args:
-            tokens: 该步消耗的 Token 数（来自 LLM 响应）
-        """
         self.step_count += 1
         self.token_count += tokens
-
-        if self.step_count > self.budget.max_steps:
+        if self.step_count > self.cfg.max_steps:
             record_agent_budget_reason("步数超限")
             return "达到最大推理步数"
-
-        if self.token_count > self.budget.max_tokens_total:
+        if self.token_count > self.cfg.max_tokens_total:
             record_agent_budget_reason("Token预算超限")
-            return f"会话 Token 超限 ({self.token_count}>{self.budget.max_tokens_total})"
-
+            return f"会话 Token 超限 ({self.token_count}>{self.cfg.max_tokens_total})"
         return None
 
     def record_tool_call(self) -> str | None:
-        """记录一次工具调用，返回终止原因或 None"""
         self.tool_call_count += 1
-        if self.tool_call_count > self.budget.max_tool_calls:
+        if self.tool_call_count > self.cfg.max_tool_calls:
             record_agent_budget_reason("工具调用次数超限")
-            return f"工具调用超限 ({self.tool_call_count}>{self.budget.max_tool_calls})"
+            return f"工具调用超限 ({self.tool_call_count}>{self.cfg.max_tool_calls})"
         return None
 
     def check_wall_clock(self) -> str | None:
-        """检查墙钟时间是否超限"""
         elapsed = time.monotonic() - self._start_time
-        if elapsed > self.budget.max_wall_clock_sec:
+        if elapsed > self.cfg.max_wall_clock_sec:
             record_agent_budget_reason("超时")
-            return f"执行超时 ({elapsed:.1f}s>{self.budget.max_wall_clock_sec}s)"
+            return f"执行超时 ({elapsed:.1f}s>{self.cfg.max_wall_clock_sec}s)"
         return None
-
-    # ── Token 估算 ──────────────────────────────────
 
     @staticmethod
     def estimate_tokens(text: str) -> int:
-        """使用 tiktoken 估算字符串 Token 数
-
-        tiktoken 失败时回退到粗略估算（1 token ≈ 2 中文字符 或 4 英文字符）。
-        """
         try:
             import tiktoken
-
-            enc = tiktoken.get_encoding("cl100k_base")
-            return len(enc.encode(text))
+            return len(tiktoken.get_encoding("cl100k_base").encode(text))
         except Exception:
-            # 回退：中文约 2 字/token，英文约 4 字/token
             ascii_chars = sum(1 for c in text if ord(c) < 128)
-            non_ascii = len(text) - ascii_chars
-            return ascii_chars // 4 + non_ascii // 2 + 1
+            return ascii_chars // 4 + (len(text) - ascii_chars) // 2 + 1
 
     def finalize(self):
-        """会话结束时记录最终指标"""
         record_agent_token_usage(self.token_count)
 
     @property
     def elapsed(self) -> float:
-        """已用墙钟时间"""
         return time.monotonic() - self._start_time
 
 
@@ -168,68 +135,31 @@ class IntentAnalyzer:
     # ── 报告意图的关键词映射 ──────────────────────────
     REPORT_PATTERNS = {
         "deployment": [
-            "部署报告",
-            "部署文档",
-            "部署方案",
-            "部署流程",
-            "上线报告",
-            "发布报告",
-            "部署说明",
-            "部署步骤",
-            "部署计划",
-            "怎么部署",
-            "如何部署",
-            "部署到",
-            "部署在",
-            "安装部署",
+            "部署",
+            "上线",
+            "发布",
             "环境搭建",
-            "搭建环境",
-            "部署文档",
-            "部署方案",
-            "写一份部署",
             "deployment",
             "deploy report",
-            "release report",
         ],
         "troubleshoot": [
-            "排查报告",
-            "问题排查",
-            "故障报告",
-            "故障排查",
-            "排查文档",
-            "怎么解决",
-            "如何解决",
+            "排查",
+            "故障",
+            "解决",
             "是什么原因",
             "为什么报错",
-            "故障分析",
-            "根因分析",
-            "问题分析",
-            "排查步骤",
-            "写一份排查",
-            "排查方案",
+            "根因",
             "troubleshoot",
-            "troubleshooting",
             "incident report",
             "错误",
             "报错",
             "失败",
             "异常",
-            "崩溃",
-            "宕机",
         ],
         "meeting": [
-            "会议纪要",
-            "会议记录",
-            "会议总结",
-            "会议摘要",
-            "会议备忘",
-            "会议讨论",
-            "写纪要",
-            "整理成纪要",
-            "生成纪要",
-            "meeting minutes",
-            "meeting notes",
+            "会议",
             "纪要",
+            "meeting minutes",
         ],
     }
 
@@ -242,37 +172,26 @@ class IntentAnalyzer:
         "栓塞检测",
         "栓塞预测",
         "栓塞识别",
-        "栓塞诊断",
         "pe诊断",
         "pe检测",
         "pe预测",
-        "诊断影像",
-        "诊断ct",
-        "诊断ctpa",
         "影像诊断",
-        "分析影像",
-        "分析扫描",
         "分析ct",
-        "分析ctpa",
+        "分析影像",
         "读片",
-        "读ct",
         "阅片",
         "预测风险",
         "风险评估",
-        "风险预测",
         "是不是肺栓塞",
         "是否肺栓塞",
         "有没有肺栓塞",
+        "diagnose",
+        "pe diagnosis",
+        "embolism detection",
+        "ctpa analysis",
         "诊断一下",
         "检测一下",
         "预测一下",
-        "diagnose",
-        "pulmonary embolism diagnosis",
-        "pe diagnosis",
-        "embolism detection",
-        "pe detection",
-        "ctpa analysis",
-        "ct analysis",
         "读一下",
     ]
 
@@ -507,16 +426,6 @@ class AgentHarnessConfig:
     confirm_handler: Callable | None = None
     """Human-in-the-Loop 确认回调（CLI 模式传入）"""
 
-    def to_budget(self) -> "AgentBudget":
-        """从此配置构建 AgentBudget 实例"""
-        return AgentBudget(
-            max_steps=self.max_steps,
-            max_tokens_total=self.max_tokens_total,
-            max_wall_clock_sec=self.max_wall_clock_sec,
-            max_tool_calls=self.max_tool_calls,
-        )
-
-
 class AgentLoopBase:
     """Agent 消息循环的公共基类 — Harness 层
 
@@ -545,10 +454,9 @@ class AgentLoopBase:
         self.generator = generator
         self.rag_pipeline = rag_pipeline
         self._config = harness_config or AgentHarnessConfig()
+        self.max_steps = self._config.max_steps
 
         # ── 预算控制 ──
-        self._budget = self._config.to_budget()
-        self.max_steps = self._config.max_steps
         self._budget_tracker: BudgetTracker | None = None
 
         # ── 安全策略 ──
@@ -585,7 +493,7 @@ class AgentLoopBase:
 
     def _init_budget(self) -> None:
         """在每个 run() 开始时初始化 BudgetTracker"""
-        self._budget_tracker = BudgetTracker(self._budget)
+        self._budget_tracker = BudgetTracker(self._config)
 
     def _check_wall_clock(self) -> str | None:
         """墙钟检查 → 返回终止原因或 None"""
@@ -975,7 +883,7 @@ class FunctionCallingLoop(AgentLoopBase):
 
                 if pending_confirmation:
                     if self.confirm_handler:
-                        confirmed = self.confirm_handler(policy_results)
+                        confirmed = self.confirm_handler(policy_results, session_id)
                         if not confirmed:
                             rejection = (
                                 "用户已拒绝执行该操作。请向用户说明你为何需要调用此工具，"
@@ -1105,6 +1013,9 @@ class FunctionCallingLoop(AgentLoopBase):
         if memory_context:
             base += f"\n\n{memory_context}"
         return base
+
+    # ── 规划阶段 ─────────────────────────────────────────
+
 
 
 # ════════════════════════════════════════════════════════════════
@@ -1349,27 +1260,6 @@ class ReActLoop(AgentLoopBase):
 # ── 辅助函数 ─────────────────────────────────────────
 
 
-def _remember_if_needed(
-    mm: "MemoryManager",
-    effective_sid: str,
-    session_id: str | None,
-    query: str,
-    intent: dict[str, Any],
-    answer_text: str,
-) -> None:
-    """条件性调用记忆记录，避免 repeated try/except"""
-    if mm is None or not session_id:
-        return
-    try:
-        mm.remember(
-            session_id=effective_sid,
-            query=query,
-            answer=answer_text or query,
-            intent_info=intent,
-        )
-    except Exception:
-        pass
-
 
 # ════════════════════════════════════════════════════════════════
 #  四、Agent 主控制器（ReAct 增强版）
@@ -1501,7 +1391,11 @@ class Agent:
 
             # ── 2. 常规问答 → 不处理，交还给 RAG 流程 ──
             if intent["intent"] == "normal_query":
-                _remember_if_needed(mm, effective_sid, session_id, query, intent, "")
+                if mm is not None and session_id:
+                    try:
+                        mm.remember(session_id=effective_sid, query=query, answer=query, intent_info=intent)
+                    except Exception:
+                        pass
                 elapsed = time.monotonic() - start
                 span.set_attribute("duration_ms", round(elapsed * 1000, 1))
                 return {
@@ -1537,8 +1431,11 @@ class Agent:
             elif isinstance(result.get("result"), str):
                 answer_text = result["result"]
 
-            _remember_if_needed(mm, effective_sid, session_id, query, intent, answer_text)
             if mm is not None and session_id:
+                try:
+                    mm.remember(session_id=effective_sid, query=query, answer=answer_text or query, intent_info=intent)
+                except Exception:
+                    pass
                 result["memory_used"] = True
 
             elapsed = time.monotonic() - start

@@ -70,6 +70,7 @@ def compute_relevance(
             "reason": "检索结果为空",
         }
 
+    # ── 1. 语义分数：向量相似度（与现有阈值适配） ──
     top1_score = retrieved_chunks[0].get("_vector_score")
     if top1_score is None:
         top1_score = retrieved_chunks[0]["score"]
@@ -77,22 +78,27 @@ def compute_relevance(
         c.get("_vector_score") if c.get("_vector_score") is not None else c["score"] for c in retrieved_chunks
     ) / len(retrieved_chunks)
 
-    # ── 根据 query 语言选择不同的重叠算法 ──
+    # ── 2. BM25 辅助信号：前 3 个 chunk 是否有 hybrid 检索的双重确认 ──
+    has_bm25_support = any(c.get("_retriever") == "hybrid" for c in retrieved_chunks[:3])
+
+    # ── 3. 根据 query 语言选择不同的重叠算法 ──
     query_is_en = is_mostly_english(query)
 
     if query_is_en:
-        # 英文：Word-level 重叠（小写 + 空格分词）
-        query_words = set(query.lower().split())
+        # 英文：字符 3-gram（比 word-level 更鲁棒，不受词形变化和停用词影响）
+        q = query.lower()
+        query_ngrams = set(q[i : i + 3] for i in range(len(q) - 2))
         overlap_scores = []
         for chunk in retrieved_chunks:
             chunk_text = chunk["text"][:500].lower()
-            chunk_words = set(chunk_text.split())
-            if query_words:
-                intersection = query_words & chunk_words
-                overlap = len(intersection) / len(query_words) if query_words else 0
+            chunk_ngrams = set(chunk_text[i : i + 3] for i in range(len(chunk_text) - 2))
+            if query_ngrams:
+                intersection = query_ngrams & chunk_ngrams
+                overlap = len(intersection) / len(query_ngrams) if query_ngrams else 0
                 overlap_scores.append(overlap)
+        overlap_required = 0.01  # 英文 3-gram 更稀疏，适当降低门槛
     else:
-        # 中文：字符级 2-gram 重叠
+        # 中文：字符级 2-gram 重叠（不变）
         query_bigrams = set(query[i : i + 2] for i in range(len(query) - 1))
         overlap_scores = []
         for chunk in retrieved_chunks:
@@ -102,36 +108,35 @@ def compute_relevance(
                 intersection = query_bigrams & chunk_bigrams
                 overlap = len(intersection) / len(query_bigrams) if query_bigrams else 0
                 overlap_scores.append(overlap)
+        overlap_required = 0.03
 
     avg_overlap = sum(overlap_scores) / len(overlap_scores) if overlap_scores else 0.0
 
-    # 综合判断：加权综合分（兼顾语义相似度和文本重叠）
+    # ── 4. 综合判断 ──
     # 语义分权重 0.6，文本重叠权重 0.4
-    # 对于明确的分数，直接判断；对于模糊区间，依赖重叠补偿
-    #
-    # 注：高语义分不能单独决定相关性——e5-base 对 OOD 查询也会返回 >0.7 的邻近结果，
-    #     必须依赖文本重叠率做二次校验。
     combined_score = top1_score * 0.6 + avg_overlap * 0.4
-    combined_threshold = 0.25  # 综合分阈值
-    overlap_required = 0.03  # 即使语义分再高，文本重叠不足也不判定为相关
+    combined_threshold = 0.25
+    # BM25 双重确认 = 两种独立检索器都认为相关 → 加分
+    bm25_bonus = 0.05 if has_bm25_support else 0.0
 
     if top1_score < 0.10 and avg_overlap < 0.02:
         is_relevant = False
         reason = (
             f"语义分过低(top1={top1_score:.3f})且文本几乎无重叠(overlap={avg_overlap:.3f})，综合分={combined_score:.3f}"
         )
-    elif avg_overlap < overlap_required:
-        # 文本重叠过低 → 不相关（阻止 OOD 问题被误判为相关）
+    elif avg_overlap < overlap_required and not has_bm25_support:
+        # 文本重叠过低 → 不相关（但如果有 BM25 双重确认，则放行）
         is_relevant = False
         reason = (
             f"文本重叠不足(overlap={avg_overlap:.3f}<{overlap_required})，"
             f"语义分top1={top1_score:.3f} 综合分={combined_score:.3f}"
         )
-    elif combined_score >= combined_threshold:
+    elif combined_score + bm25_bonus >= combined_threshold:
         is_relevant = True
         reason = f"综合分达标(={combined_score:.3f})，语义分top1={top1_score:.3f}+重叠{avg_overlap:.3f}"
+        if has_bm25_support:
+            reason += "+BM25确认"
     elif top1_score > 0.60 and avg_overlap > 0.05:
-        # 高语义 + 基本重叠 → 相关（放宽但保留重叠要求）
         is_relevant = True
         reason = f"语义分较高(top1={top1_score:.3f})且有一定重叠({avg_overlap:.3f})"
     else:
@@ -140,6 +145,8 @@ def compute_relevance(
             f"综合分未达标(={combined_score:.3f}<{combined_threshold})，"
             f"语义分top1={top1_score:.3f} 重叠={avg_overlap:.3f}"
         )
+        if has_bm25_support:
+            reason += "（有BM25支撑但综合分仍不足）"
 
     return {
         "is_relevant": is_relevant,
