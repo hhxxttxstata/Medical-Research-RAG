@@ -239,6 +239,7 @@ class MarkerParser:
 
 class MarkdownConverter:
     """将 PDF 原始文本转换为结构化 Markdown（Marker 不可用时的回退）"""
+
     """将 PDF 原始文本转换为结构化 Markdown
 
     处理策略：
@@ -973,7 +974,9 @@ def process_document(file_path: str) -> dict[str, Any]:
     # 6. 每篇文档最多 MAX_CHUNKS_PER_DOC 个 small chunk
     MAX_CHUNKS_PER_DOC = 80
     if len(small_chunks) > MAX_CHUNKS_PER_DOC:
-        print(f"  ⚠️ Small chunks ({len(small_chunks)}) 超过上限 ({MAX_CHUNKS_PER_DOC})，截断保留前 {MAX_CHUNKS_PER_DOC} 个")
+        print(
+            f"  ⚠️ Small chunks ({len(small_chunks)}) 超过上限 ({MAX_CHUNKS_PER_DOC})，截断保留前 {MAX_CHUNKS_PER_DOC} 个"
+        )
         small_chunks = small_chunks[:MAX_CHUNKS_PER_DOC]
 
     # 7. 汇总统计
@@ -1003,11 +1006,7 @@ def _sanitize_text(text: str) -> str:
     for ch in text:
         cp = ord(ch)
         # 保留正常字符
-        if cp == 0x0A:  # 换行
-            chars.append(ch)
-        elif cp >= 0x20 and cp < 0x7F:  # ASCII 可见
-            chars.append(ch)
-        elif cp >= 0xA0 and cp < 0xD7FF:  # BMP 非私用区
+        if cp == 0x0A or cp >= 0x20 and cp < 0x7F or cp >= 0xA0 and cp < 0xD7FF:  # 换行
             chars.append(ch)
         elif cp >= 0xE000 and cp <= 0xF8FF:  # PUA 私用区 → 丢弃
             continue

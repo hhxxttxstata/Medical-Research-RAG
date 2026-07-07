@@ -1,56 +1,19 @@
 # RAG 系统依赖
-# 向量数据库
 chromadb
-
-# Embedding 模型
 sentence-transformers==3.0.1
-
-# PDF 解析（PyMuPDF 纯文本回退）
 pypdf==4.3.1
-
-# Marker PDF → 结构化 Markdown（主解析路径，内置 Surya OCR）
-# 可选：不安装 Marker 则自动回退到 PyMuPDF + Tesseract + 规则管线
 marker-pdf>=0.3.0
-
-# OpenAI API（可选，用于大模型生成）
 openai==1.30.0
-
-# 其他工具
-tiktoken==0.7.0
 python-dotenv==1.0.1
 rank-bm25>=0.2.2
-
-# Web 服务（API 部署）
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 python-multipart>=0.0.12
-
-# 医学影像推理（可选，用于肺栓塞诊断模块）
 torch>=1.10.0
 nibabel>=5.0.0
 scipy>=1.7.0
-
-# 诊断可视化
 matplotlib
-
-# MCP (Model Context Protocol) 工具开放协议
-mcp>=1.0.0
-
-# 可观测性（Metrics + Tracing + Structured Logging）
-opentelemetry-api>=1.25.0
-opentelemetry-sdk>=1.25.0
-prometheus-client>=0.20.0
-structlog>=24.2.0
-
-# 安全防护（速率限制）
-slowapi>=0.1.9
-
-# 文件监听 + 缓存
 watchdog>=6.0.0
 redis>=5.0.0
-
-# Lucene-compatible BM25 (disk-based indexing, solves memory explosion)
 whoosh>=0.7.8
-
-# Milvus vector database (optional: Milvus Lite via pymilvus[milvus-lite])
 pymilvus>=2.4.0

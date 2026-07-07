@@ -22,16 +22,6 @@ if sys.platform == "win32":
 
 load_dotenv()
 
-from opentelemetry import trace as otel_trace
-
-from .embeddings import is_mostly_english
-from .monitoring.metrics import record_llm_latency
-
-# ── 可观测性 ────────────────────────────────────────
-from .monitoring.tracing import get_tracer
-
-_tracer = None  # lazy init
-
 
 # ──────────────────────────────────────────────
 #  一、多因子相关性判断
@@ -474,16 +464,7 @@ class LLMGenerator:
             生成的回答文本
         """
         prompt, source_map, relevance = prompt_and_source
-
-        # ── 追踪 span ──
-        global _tracer
-        if _tracer is None:
-            _tracer = get_tracer()
-        _span_ctx = _tracer.start_as_current_span("generator.generate")
-        _span = _span_ctx.__enter__()
-        _span.set_attribute("model_name", self.model)
         has_valid_key = self._is_valid_api_key(self.api_key)
-        _span.set_attribute("has_api_key", has_valid_key)
 
         start = time.monotonic()
         try:
@@ -513,20 +494,9 @@ class LLMGenerator:
                     )
                     answer += warning
 
-            elapsed = time.monotonic() - start
-            _span.set_attribute("answer_length", len(answer))
-            _span.set_attribute("duration_ms", round(elapsed * 1000, 1))
-            record_llm_latency(elapsed, model=self.model, api_type=self._detect_api_type())
-
             return answer
         except Exception as e:
-            elapsed = time.monotonic() - start
-            _span.record_exception(e)
-            _span.set_status(otel_trace.Status(otel_trace.StatusCode.ERROR, str(e)))
-            record_llm_latency(elapsed, model=self.model, api_type="error")
             raise
-        finally:
-            _span_ctx.__exit__(None, None, None)
 
     # ── Chat 接口（带 Circuit Breaker + 重试） ──────────
 
@@ -542,35 +512,20 @@ class LLMGenerator:
         temperature: float | None = None,
         max_tokens: int = 2048,
     ) -> str:
-        """面向对话 / ReAct 循环的聊天接口
-
-        直接传入 messages 列表，适用于多轮对话场景（如 Agent 的 ReAct 循环）。
-        内置 Circuit Breaker + 指数退避重试。
-        """
-        global _tracer
-        if _tracer is None:
-            _tracer = get_tracer()
+        """直接传入 messages 列表，适用于多轮对话场景"""
         start = time.monotonic()
-        with _tracer.start_as_current_span("generator.chat") as span:
-            span.set_attribute("model_name", self.model)
 
-            # Circuit Breaker 检查
-            if not self._check_circuit_breaker():
-                elapsed = time.monotonic() - start
-                span.set_attribute("duration_ms", round(elapsed * 1000, 1))
-                record_llm_latency(elapsed, model=self.model, api_type=self._detect_api_type())
-                return self._fallback_text("API 熔断中")
+        # Circuit Breaker 检查
+        if not self._check_circuit_breaker():
+            return self._fallback_text("API 熔断中")
 
-            try:
-                fn = self._get_chat_fn()
-                result = self._with_retry(fn, messages, temperature, max_tokens)
-            except Exception:
-                result = self._fallback_text("API 暂时不可用")
+        try:
+            fn = self._get_chat_fn()
+            result = self._with_retry(fn, messages, temperature, max_tokens)
+        except Exception:
+            result = self._fallback_text("API 暂时不可用")
 
-            elapsed = time.monotonic() - start
-            span.set_attribute("duration_ms", round(elapsed * 1000, 1))
-            record_llm_latency(elapsed, model=self.model, api_type=self._detect_api_type())
-            return result
+        return result
 
     def chat_with_tools(
         self,
@@ -597,59 +552,39 @@ class LLMGenerator:
         Returns:
             ChatWithToolsResult: 含 content 和/或 tool_calls
         """
-        global _tracer
-        if _tracer is None:
-            _tracer = get_tracer()
         start = time.monotonic()
-        with _tracer.start_as_current_span("generator.chat_with_tools") as span:
-            span.set_attribute("model_name", self.model)
-            has_valid_key = self._is_valid_api_key(self.api_key)
-            span.set_attribute("has_api_key", has_valid_key)
-            has_tools = tools is not None and len(tools) > 0
-            span.set_attribute("has_tools", has_tools)
+        has_valid_key = self._is_valid_api_key(self.api_key)
 
-            # ── 有 API Key → OpenAI/DeepSeek 兼容路径 ──
-            if has_valid_key and tools:
-                try:
-                    result = self._call_openai_chat_with_tools(
-                        messages=messages,
-                        tools=tools,
-                        tool_choice=tool_choice or "auto",
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        parallel_tool_calls=parallel_tool_calls,
-                    )
-                    elapsed = time.monotonic() - start
-                    span.set_attribute("duration_ms", round(elapsed * 1000, 1))
-                    span.set_attribute("tool_call_count", len(result.tool_calls))
-                    record_llm_latency(elapsed, model=self.model, api_type=self._detect_api_type())
-                    return result
-                except Exception:
-                    # Function Calling API 调用失败，降级到纯文本
-                    pass
+        # ── 有 API Key → OpenAI/DeepSeek 兼容路径 ──
+        if has_valid_key and tools:
+            try:
+                result = self._call_openai_chat_with_tools(
+                    messages=messages,
+                    tools=tools,
+                    tool_choice=tool_choice or "auto",
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    parallel_tool_calls=parallel_tool_calls,
+                )
+                return result
+            except Exception:
+                pass
 
-            # ── 无 API Key（Ollama 路径） ──
-            if not has_valid_key and tools:
-                try:
-                    result = self._call_ollama_chat_with_tools(
-                        messages=messages,
-                        tools=tools,
-                        temperature=temperature,
-                    )
-                    elapsed = time.monotonic() - start
-                    span.set_attribute("duration_ms", round(elapsed * 1000, 1))
-                    span.set_attribute("tool_call_count", len(result.tool_calls))
-                    record_llm_latency(elapsed, model=self.model, api_type="ollama")
-                    return result
-                except Exception:
-                    pass
+        # ── 无 API Key（Ollama 路径） ──
+        if not has_valid_key and tools:
+            try:
+                result = self._call_ollama_chat_with_tools(
+                    messages=messages,
+                    tools=tools,
+                    temperature=temperature,
+                )
+                return result
+            except Exception:
+                pass
 
-            # ── 降级到纯文本 ──
-            text = self.chat(messages, temperature=temperature, max_tokens=max_tokens)
-            elapsed = time.monotonic() - start
-            span.set_attribute("duration_ms", round(elapsed * 1000, 1))
-            record_llm_latency(elapsed, model=self.model, api_type=self._detect_api_type())
-            return ChatWithToolsResult(content=text, tool_calls=[], finish_reason="stop", is_degraded=True)
+        # ── 降级到纯文本 ──
+        text = self.chat(messages, temperature=temperature, max_tokens=max_tokens)
+        return ChatWithToolsResult(content=text, tool_calls=[], finish_reason="stop", is_degraded=True)
 
     def _call_openai_chat_with_tools(
         self,
