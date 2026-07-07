@@ -16,10 +16,6 @@ from typing import Any
 
 from .embeddings import EmbeddingProvider
 from .lucene_bm25 import LuceneBM25Index
-from .monitoring.metrics import record_retrieval
-
-# ── 可观测性 ────────────────────────────────────────
-from .monitoring.tracing import get_tracer
 from .vector_store import VectorStore
 
 # ── Query Rewriting 提示词 ──────────────────────────
@@ -158,57 +154,41 @@ class Retriever:
                 r.pop("_retriever", None)
             return results
 
-        # ── 追踪 span ──
-        tracer = get_tracer()
-        with tracer.start_as_current_span("retriever.retrieve") as span:
-            span.set_attribute("top_k", k)
-            span.set_attribute("mode", "hybrid")
-            span.set_attribute("rewrite_enabled", self.enable_rewrite)
-            span.set_attribute("rerank_enabled", self.enable_reranker)
-            start = time.monotonic()
+        start = time.monotonic()
 
-            # 记录原始 query，供后续区分改写 query
-            self._original_query = query
+        # 记录原始 query，供后续区分改写 query
+        self._original_query = query
 
-            # ── 阶段 0: Query Rewriting ──
-            search_queries = self._rewrite_query(query) if self._can_rewrite() else [query]
-            span.set_attribute("search_query_count", len(search_queries))
-            span.set_attribute("was_rewritten", self._was_rewritten)
+        # ── 阶段 0: Query Rewriting ──
+        search_queries = self._rewrite_query(query) if self._can_rewrite() else [query]
 
-            # ── 阶段 1: Hybrid Search（每条改写 query 独立检索，结果去重合并） ──
-            all_results = []
-            seen_ids: set = set()
-            fetch_k = max(k * 2, 20)
+        # ── 阶段 1: Hybrid Search（每条改写 query 独立检索，结果去重合并） ──
+        all_results = []
+        seen_ids: set = set()
+        fetch_k = max(k * 2, 20)
 
-            for sq in search_queries:
-                results = self._hybrid_retrieve(sq, fetch_k=fetch_k)
-                for r in results:
-                    if r["id"] not in seen_ids:
-                        all_results.append(r)
-                        seen_ids.add(r["id"])
+        for sq in search_queries:
+            results = self._hybrid_retrieve(sq, fetch_k=fetch_k)
+            for r in results:
+                if r["id"] not in seen_ids:
+                    all_results.append(r)
+                    seen_ids.add(r["id"])
 
-            # ── 阶段 2: Reranker ──
-            candidates = all_results[: max(self.rerank_top_k, k)]
-            if self._can_rerank() and len(candidates) > k:
-                reranked = self._rerank(query, candidates, k)
-            else:
-                reranked = candidates[:k]
+        # ── 阶段 2: Reranker ──
+        candidates = all_results[: max(self.rerank_top_k, k)]
+        if self._can_rerank() and len(candidates) > k:
+            reranked = self._rerank(query, candidates, k)
+        else:
+            reranked = candidates[:k]
 
-            # 清理内部字段
-            for r in reranked:
-                r.pop("_rrf_score", None)
-                r.pop("_retriever", None)
+        # 清理内部字段
+        for r in reranked:
+            r.pop("_rrf_score", None)
+            r.pop("_retriever", None)
 
-            elapsed = time.monotonic() - start
-            span.set_attribute("total_retrieved", len(all_results))
-            span.set_attribute("final_count", len(reranked))
-            span.set_attribute("duration_ms", round(elapsed * 1000, 1))
+        elapsed = time.monotonic() - start
 
-            # 记录指标
-            scores = [r.get("score", 0) for r in reranked]
-            record_retrieval(scores)
-
-            return reranked
+        return reranked
 
     # ══════════════════════════════════════════════════
     #  Query Rewriting
