@@ -66,11 +66,11 @@ export interface HealthResponse {
   status: string
   version: string
   knowledge_base: {
-    chunk_count: number
-    data_dir: string
-    embedding: string
-    top_k: number
-    chunk_range: string
+    chunk_count?: number
+    data_dir?: string
+    embedding?: string
+    top_k?: number
+    chunk_range?: string
   } | null
   timestamp: string
 }
@@ -141,6 +141,13 @@ export const api = {
 
   stats(): Promise<StatsResponse> {
     return fetch(`${API_BASE}/stats`).then((r) => r.json())
+  },
+
+  uploadDocument(file: File): Promise<Response> {
+    const fd = new FormData()
+    fd.append("file", file)
+    fd.append("auto_index", "true")
+    return fetch(`${API_BASE}/documents/upload`, { method: "POST", body: fd })
   },
 
   logs(n = 10): Promise<{ records: Array<Record<string, unknown>> }> {

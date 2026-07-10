@@ -1,14 +1,94 @@
 "use client"
 
+import { useState } from "react"
 import { type Message } from "@/hooks/use-chat"
 import { cn } from "@/lib/utils"
-import { Bot, User, RefreshCw, Clock, CheckCircle2, AlertTriangle } from "lucide-react"
+import { Bot, User, RefreshCw, Clock, CheckCircle2, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
+import { Separator } from "@/components/ui/separator"
 import { ProcessTimeline } from "./process-timeline"
 import { SourceList } from "./source-list"
 
 interface ChatMessageProps {
   message: Message
+}
+
+interface AnswerSections {
+  conclusion: string
+  evidence: string
+  sources: string
+  uncertain: string
+  nextSteps: string
+}
+
+function parseAnswerSections(text: string): AnswerSections {
+  const sections: AnswerSections = {
+    conclusion: "",
+    evidence: "",
+    sources: "",
+    uncertain: "",
+    nextSteps: "",
+  }
+
+  // Split by markdown headers like **结论：** or **结论：**
+  const patterns: [keyof AnswerSections, RegExp][] = [
+    ["conclusion", /\*\*结论[：:]\*\*/],
+    ["evidence", /\*\*依据[：:]\*\*/],
+    ["sources", /\*\*引用来源[：:]\*\*/],
+    ["uncertain", /\*\*不确定信息[：:]\*\*/],
+    ["nextSteps", /\*\*建议下一步[：:]\*\*/],
+  ]
+
+  for (let i = 0; i < patterns.length; i++) {
+    const [key, pattern] = patterns[i]
+    const match = pattern.exec(text)
+    if (!match) continue
+
+    const startIdx = match.index + match[0].length
+    // Find the next section header (or end of string)
+    let endIdx = text.length
+    for (let j = i + 1; j < patterns.length; j++) {
+      const nextMatch = patterns[j][1].exec(text)
+      if (nextMatch && nextMatch.index > match.index) {
+        endIdx = nextMatch.index
+        break
+      }
+    }
+
+    sections[key] = text.slice(startIdx, endIdx).trim()
+  }
+
+  return sections
+}
+
+function isRefusal(text: string): boolean {
+  return /知识库中未找到/.test(text) || /拒答/.test(text)
+}
+
+function SectionBlock({ title, content, defaultOpen = false }: { title: string; content: string; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  if (!content) return null
+
+  return (
+    <div className="mb-2">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger className="flex w-full items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer py-0.5">
+          {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          {title}
+          {content.length > 80 && (
+            <span className="text-[10px] text-muted-foreground/60 ml-auto">
+              {open ? "收起" : `${content.length} 字`}
+            </span>
+          )}
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-1 text-sm leading-relaxed prose-chat">
+          <div dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
+  )
 }
 
 export function ChatMessage({ message }: ChatMessageProps) {
@@ -28,6 +108,9 @@ export function ChatMessage({ message }: ChatMessageProps) {
       </div>
     )
   }
+
+  const sections = parseAnswerSections(message.content)
+  const hasSections = Object.values(sections).some((s) => s.length > 0)
 
   return (
     <div className="flex gap-3">
@@ -73,10 +156,53 @@ export function ChatMessage({ message }: ChatMessageProps) {
               </div>
             )}
 
-            <div
-              className="prose-chat text-sm"
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
-            />
+            {hasSections ? (
+              <div className="space-y-2">
+                {/* 结论 — always visible */}
+                {sections.conclusion && (
+                  <div className="rounded-lg border border-border bg-card/50 px-3 py-2">
+                    <div className="text-xs font-semibold text-foreground/70 mb-1">📌 结论</div>
+                    <div
+                      className="text-sm leading-relaxed prose-chat"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(sections.conclusion) }}
+                    />
+                  </div>
+                )}
+
+                {/* 建议下一步 — always visible */}
+                {sections.nextSteps && (
+                  <div className="rounded-lg border border-border bg-card/50 px-3 py-2">
+                    <div className="text-xs font-semibold text-foreground/70 mb-1">👉 建议下一步</div>
+                    <div
+                      className="text-sm leading-relaxed prose-chat"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(sections.nextSteps) }}
+                    />
+                  </div>
+                )}
+
+                <Separator className="my-1" />
+
+                {/* Collapsible sections */}
+                <div className="space-y-0.5">
+                  <SectionBlock title="📋 依据" content={sections.evidence} />
+                  <SectionBlock title="📚 引用来源" content={sections.sources} />
+                  <SectionBlock title="⚠️ 不确定信息" content={sections.uncertain} />
+                </div>
+
+                {/* If it's a refusal, show the full text as fallback */}
+                {isRefusal(message.content) && !sections.conclusion && (
+                  <div
+                    className="prose-chat text-sm"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
+                  />
+                )}
+              </div>
+            ) : (
+              <div
+                className="prose-chat text-sm"
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
+              />
+            )}
 
             {/* Process Log */}
             {message.processLog && message.processLog.length > 0 && (
@@ -100,26 +226,29 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
 function renderMarkdown(text: string): string {
   // Simple but safe markdown-to-HTML rendering
-  // For production, use a proper markdown library like react-markdown
   let html = text
-    // Headers
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    // Headers (decrease heading level for nested display)
+    .replace(/^### (.+)$/gm, '<h4 class="text-sm font-semibold my-1.5">$1</h4>')
+    .replace(/^## (.+)$/gm, '<h3 class="text-sm font-semibold my-1.5">$1</h3>')
+    .replace(/^# (.+)$/gm, '<h2 class="text-sm font-semibold my-1.5">$1</h2>')
     // Bold & italic
     .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     // Inline code
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/`([^`]+)`/g, '<code class="bg-muted px-1 rounded text-xs">$1</code>')
     // Blockquotes
-    .replace(/^> (.+)$/gm, '<blockquote><p>$1</p></blockquote>')
+    .replace(/^> (.+)$/gm, '<blockquote class="border-l-2 border-muted-foreground/20 pl-3 my-1 text-muted-foreground text-xs"><p>$1</p></blockquote>')
     // Horizontal rules
-    .replace(/^---+$/gm, '<hr />')
+    .replace(/^---+$/gm, '<hr class="my-2" />')
+    // Unordered list
+    .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc text-sm">$1</li>')
+    // Ordered list
+    .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 list-decimal text-sm">$1</li>')
     // Paragraphs (double newlines)
-    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n\n/g, '</p><p class="text-sm leading-relaxed">')
     // Line breaks
     .replace(/\n/g, '<br />')
 
-  return `<p>${html}</p>`
+  return `<p class="text-sm leading-relaxed">${html}</p>`
 }

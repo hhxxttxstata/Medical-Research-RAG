@@ -15,6 +15,8 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from .embeddings import is_mostly_english
+
 # Windows GBK 编码兼容
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")

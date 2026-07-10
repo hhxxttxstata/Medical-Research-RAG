@@ -23,13 +23,19 @@ Thumbs.db
 # Docker
 docker-compose.yml
 Dockerfile.backend
+Dockerfile.backend
 Dockerfile.frontend
+Dockerfile.nextjs
 
 # 运行时数据（volume 挂载，不进入镜像）
 logs/
 chroma_db/
 chroma_db_eval/
 data/diagnosis_uploads/
+
+# 前端 node_modules（体积大，镜像内自己安装）
+frontend/node_modules/
+frontend/.next/
 
 # 评估与报告
 evaluation_report.json
