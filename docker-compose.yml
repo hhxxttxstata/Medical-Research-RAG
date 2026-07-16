@@ -21,6 +21,9 @@ services:
       - ./data:/app/data
       - ./chroma_db:/app/chroma_db
       - ./logs:/app/logs
+      - ./eval_results:/app/eval_results
+      - ./Makefile:/app/Makefile
+      - ./evaluate.py:/app/evaluate.py:ro
       # 复用本地 HuggingFace 模型缓存，避免每次部署重新下载
       - ~/.cache/huggingface:/root/.cache/huggingface
     env_file:
