@@ -166,7 +166,7 @@ class RetrievalEvaluator:
                         "expected_doc": expected_doc,
                         "expected_hit": expected_hit,
                         "num_retrieved": len(sources),
-                        "top_score": sources[0]["score"] if sources else 0,
+                        "top_score": sources[0].get("_vector_score") or sources[0]["score"] if sources else 0,
                         "time_seconds": round(elapsed, 2),
                         "category": q["category"],
                         "difficulty": q.get("difficulty", "unknown"),

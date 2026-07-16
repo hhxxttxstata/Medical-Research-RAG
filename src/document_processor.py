@@ -23,6 +23,7 @@
 
 import os
 import re
+import sys
 import tempfile
 from dataclasses import dataclass, field
 from typing import Any
@@ -189,12 +190,16 @@ class MarkerParser:
     @property
     def available(self) -> bool:
         if self._available is None:
-            try:
-                from marker.converters.pdf import PdfConverter  # noqa: F401
-
-                self._available = True
-            except ImportError:
+            # Windows 上 Marker 导包成功但 parse() 会 segfault，安全起见强制禁用
+            if sys.platform == "win32":
                 self._available = False
+            else:
+                try:
+                    from marker.converters.pdf import PdfConverter  # noqa: F401
+
+                    self._available = True
+                except ImportError:
+                    self._available = False
         return self._available
 
     def parse(self, file_path: str) -> dict[str, Any]:
@@ -290,6 +295,97 @@ class MarkdownConverter:
         return "\n\n".join(pages_md)
 
     @staticmethod
+    def _reflow_paragraphs(text: str) -> str:
+        """段落重排——将 PyMuPDF 按物理行提取的文本合并为完整段落
+
+        PyMuPDF 的 get_text("text") 保留了 PDF 排版层的物理换行位置。
+        学术论文两端对齐 + 窄栏宽导致自然句被切成多个短行，
+        合并后恢复段落完整性，对向量检索语义质量至关重要。
+
+        合并策略：
+          - 连续非空行中，不以句号/问号/感叹号结尾的行 → 属于同一段落
+          - 合并时自动在英文单词间补空格（中文不加）
+          - 章节标题/短标头行（大写开头/编号开头/超短行）→ 保持独立
+          - 中文页眉行（"年 第N卷 第N期"等）→ 丢弃
+        """
+        lines = text.split("\n")
+        result: list[str] = []
+        buffer: list[str] = []
+
+        def needs_space_between(a: str, b: str) -> bool:
+            """判断合并两行时是否需要加空格"""
+            a_end = a[-1] if a else ""
+            b_start = b[0] if b else ""
+            # 英文单词间：a-z + a-z 或 a-z + 数字 → 加空格
+            if re.match(r"[a-zA-Z0-9]", a_end) and re.match(r"[a-zA-Z0-9(]", b_start):
+                return True
+            # 中文标点后接中文或英文 → 不加
+            return False
+
+        def flush():
+            if buffer:
+                merged = buffer[0]
+                for i in range(1, len(buffer)):
+                    if needs_space_between(merged, buffer[i]):
+                        merged += " " + buffer[i]
+                    else:
+                        merged += buffer[i]
+                result.append(merged)
+                buffer.clear()
+
+        for line in lines:
+            s = line.strip()
+            if not s:
+                flush()
+                if result and result[-1] != "":
+                    result.append("")
+                continue
+
+            # ── 章节标题/短标头：保持独立行 ──
+            is_heading = (
+                len(s) < 60
+                and s[-1] not in ".!?。！？：:;；"
+                and (
+                    re.match(r"^(第[一二三四五六七八九十]|[ⅠⅡⅢⅣⅤ]|\d+\.)", s)
+                    or (re.match(r"^[A-Z][^a-z]{2,}", s) and not re.search(r"\d{3,}", s))
+                )
+            )
+
+            # ── 中文页眉/栏目信息行 → 直接丢弃 ──
+            chinese_header_patterns = [
+                r"第\d+卷\s*第\d+期",
+                r"年\s*第\d+卷",
+                r"^[中国]+\S*影像学\S*$",
+                r"^[中国]+\S*放射学\S*$",
+                r"^(临床|实验|基础|论著|短篇|经验|综述)[ 　]",
+                r"^[胸腹头]部影像",
+                r"^\S+杂志\s*\d+$",
+            ]
+            is_chinese_header = any(re.search(p, s) for p in chinese_header_patterns) and len(s) < 30
+            if is_chinese_header:
+                flush()
+                continue
+
+            if is_heading:
+                flush()
+                result.append(s)
+                continue
+
+            # ── 段落合并判断 ──
+            if buffer and buffer[-1]:
+                prev_last_char = buffer[-1][-1]
+                # 上一行以句末标点结尾 → 段落自然结束
+                if prev_last_char in ".!?。！？：:":
+                    flush()
+
+            buffer.append(s)
+
+        flush()
+
+        # 保留空行作为段落分隔
+        return "\n".join(result)
+
+    @staticmethod
     def _clean_page_text(text: str) -> str:
         """单页文本清洗"""
         lines = text.split("\n")
@@ -311,6 +407,16 @@ class MarkdownConverter:
                 if len(line_stripped) < 100:
                     continue
 
+            # 公式/示意图文本的纯噪声行检测——连续高比例数字/符号，无有意义单词
+            if re.match(r"^[\d\sx×NnKCc\-\|/:]{3,}$", line_stripped) and len(line_stripped) < 60:
+                continue
+
+            # 表格检测误判过滤：单行含 | 但无对齐的标题分隔符（---），且不是多行表格的一部分
+            if "|" in line_stripped and "---" not in line_stripped:
+                parts = line_stripped.split("|")
+                if len(parts) <= 4 and all(len(p.strip()) > 10 for p in parts if p.strip()):
+                    continue
+
             cleaned.append(line)
 
         text = "\n".join(cleaned)
@@ -322,6 +428,9 @@ class MarkdownConverter:
         text = text.replace("ﬁ", "fi").replace("ﬂ", "fl")
         text = text.replace("–", "-").replace("—", "-")
         text = re.sub(r"[•●▪▶]", "-", text)
+
+        # 段落重排——解决学术 PDF 的物理换行问题
+        text = MarkdownConverter._reflow_paragraphs(text)
 
         return text
 
@@ -839,7 +948,7 @@ class SmartChunker:
             if not stripped:
                 continue
             if buffer and len(stripped) < 10:
-                buffer += " " if is_en else "" + stripped
+                buffer += (" " if is_en else "") + stripped
             else:
                 if buffer:
                     sentences.append(buffer)
@@ -972,7 +1081,7 @@ def process_document(file_path: str) -> dict[str, Any]:
     small_chunks, parent_chunks = chunker.chunk(markdown_text, metadata)
 
     # 6. 每篇文档最多 MAX_CHUNKS_PER_DOC 个 small chunk
-    MAX_CHUNKS_PER_DOC = 80
+    MAX_CHUNKS_PER_DOC = 200
     if len(small_chunks) > MAX_CHUNKS_PER_DOC:
         print(
             f"  ⚠️ Small chunks ({len(small_chunks)}) 超过上限 ({MAX_CHUNKS_PER_DOC})，截断保留前 {MAX_CHUNKS_PER_DOC} 个"

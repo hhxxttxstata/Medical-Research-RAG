@@ -10,6 +10,7 @@ Embedding 模块
 """
 
 import os
+import re
 
 from dotenv import load_dotenv
 
@@ -18,18 +19,41 @@ load_dotenv()
 # ── 语言检测辅助（供其他模块导入） ──────────────
 
 _ENGLISH_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+# 预编译 regex，避免每调用一次编译一次
+_WORD_RE = re.compile(r"[a-zA-Z]+")
+_CJK_RE = re.compile(r"[一-鿿]")
 
 
 def is_mostly_english(text: str) -> bool:
-    """粗略检测文本是否以英文为主
+    """检测文本是否以英文为主
 
-    规则：英文字母占总字符数 40% 以上视为英文。
+    规则：
+      1) 英文字母占总字符数 > 40% → 英文（快速路径）
+      2) 英文字母 25-40% → 比较英文单词数与中文字数，英:中 > 2:1 则判定为英文
+         （解决医学文献含大量数字/希腊字母/符号时拉丁字母比例偏低的问题）
+      3) 其他 → 中文
+
     用于路由到不同的 chunk 策略 / relevance 算法 / embedding 前缀。
     """
     if not text.strip():
         return False
+
+    total = len(text)
     en_count = sum(1 for c in text if c in _ENGLISH_CHARS)
-    return en_count > len(text) * 0.4
+
+    # 规则 1：高英文字母比例 → 直接判定为英文
+    if en_count > total * 0.40:
+        return True
+
+    # 规则 2：英文字母在 25-40% 之间 → 用英文词/中文字数比验证
+    if en_count > total * 0.25:
+        en_words = len(_WORD_RE.findall(text))
+        cjk_chars = len(_CJK_RE.findall(text))
+        # 英文单词数超过中文字数 2 倍 → 判定为英文
+        if en_words > cjk_chars * 2:
+            return True
+
+    return False
 
 
 # ── Embedding 模型名称常量 ─────────────────────

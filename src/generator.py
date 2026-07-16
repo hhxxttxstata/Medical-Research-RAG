@@ -154,44 +154,114 @@ def compute_relevance(
 # ──────────────────────────────────────────────
 
 
+def _cacheable_system_message(is_stream: bool = False) -> dict[str, str]:
+    """系统消息——纯静态，包含结构化工单 + Few-shot"""
+    return {
+        "role": "system",
+        "content": (
+            "你是一个专业的医学AI知识助手，擅长结合检索到的参考文档回答医学问题。\n"
+            "\n"
+            "## 核心规则\n"
+            "1. 严格基于参考文档回答，每句结论必须引用编号 [N]\n"
+            "2. 严禁虚构引用——不要编造参考文档中不存在的编号\n"
+            "3. 如果参考文档不包含足够信息，如实说明，不要编造\n"
+            "4. 输出严格遵循下方 JSON 结构，不要添加多余字段\n"
+            "\n"
+            "## 输出格式\n"
+            "必须返回合法 JSON，包含以下字段：\n"
+            "```json\n"
+            "{\n"
+            '  "diagnosis": "明确的结论性判断（一句话概括）",\n'
+            '  "confidence": "高/中/低",\n'
+            '  "evidence": ["基于参考文档的具体依据，每一条末尾标注引用 [1][2]"],\n'
+            '  "suggestion": "基于现有信息的建议（如需要进一步检查、需结合临床、或确认事项）",\n'
+            '  "sources": ["引用来源文件名列表"],\n'
+            '  "uncertainty": "如果信息不充分，说明缺失了什么" \n'
+            "}\n"
+            "```\n"
+            "\n"
+            "## 示例\n"
+            "用户问题：CTPA检查对肺栓塞诊断有什么价值？\n"
+            "```json\n"
+            "{\n"
+            '  "diagnosis": "CTPA（CT肺动脉造影）是诊断肺栓塞的金标准影像学检查方法",\n'
+            '  "confidence": "高",\n'
+            '  "evidence": [\n'
+            '    "CTPA可清晰显示肺动脉主干及分支内的血栓，直接征象为血管内充盈缺损 [1]",\n'
+            '    "CTPA对段以上肺动脉栓塞的敏感性达94%，特异性达96% [2]"\n'
+            "  ],\n"
+            '  "suggestion": "如CTPA结果阴性但临床高度怀疑PE，建议结合D-二聚体检测及下肢静脉超声进一步排除",\n'
+            '  "sources": ["肺栓塞影像诊断指南", "CTPA临床应用专家共识"],\n'
+            '  "uncertainty": ""\n'
+            "}\n"
+            "```\n"
+            "\n"
+            "用户问题：肺栓塞的治疗方案是什么？\n"
+            "```json\n"
+            "{\n"
+            '  "diagnosis": "肺栓塞的急性期治疗以抗凝为基石，重症患者需溶栓治疗",\n'
+            '  "confidence": "高",\n'
+            '  "evidence": [\n'
+            '    "血流动力学稳定的急性肺栓塞患者，推荐初始抗凝治疗，普通肝素或低分子肝素 [1]",\n'
+            '    "高危PE（伴休克或低血压）患者，如无禁忌证，推荐溶栓治疗 [2]",\n'
+            '    "溶栓后出血风险较高，需严格评估禁忌证 [3]"\n'
+            "  ],\n"
+            '  "suggestion": "建议根据sPESI评分进行危险分层后制定个体化治疗方案",\n'
+            '  "sources": ["肺栓塞诊断与治疗指南", "急性肺栓塞抗栓治疗共识"],\n'
+            '  "uncertainty": "具体用药剂量和疗程需结合患者体重、肾功能及出血风险评估" \n'
+            "}\n"
+            "```\n"
+            "\n"
+            "## 回答要求\n"
+            '- uncertainty 字段不得为空——至少写"无"\n'
+            "- 每个 evidence 条目必须有至少一个 [N] 引用标记\n"
+            "- 不要复述无关背景，只输出与问题直接相关的信息"
+        ),
+    }
+
+
 def build_rag_prompt(
     query: str,
     retrieved_chunks: list[dict[str, Any]],
     relevance: dict[str, Any] | None = None,
-) -> tuple[str, dict[str, Any], dict[str, Any]]:
+    use_prefix_cache: bool = True,
+) -> tuple[list[dict[str, str]], dict[str, Any], dict[str, Any]]:
     """
-    构建 RAG Prompt（混合模式）
+    构建 RAG Prompt（Prompt Caching 优化版）
+
+    结构：
+      messages = [
+        system  ← 纯静态，被所有请求共享前缀
+        user    ← 稳定前缀（参考文档说明） + 动态段（chunks + query）
+      ]
+
+    Prompt Caching 命中场景：
+      - 相同 system prompt → 跨 session 共享 cache
+      - 相同 user prefix → 同一会话中连续请求共享
 
     返回:
-        (prompt_text, source_map, relevance_info)
+        (messages_list, source_map, relevance_info)
+        messages_list 可直接传给 OpenAI chat API
     """
     if relevance is None:
         relevance = compute_relevance(query, retrieved_chunks)
 
-    # ── 构建带引用的上下文（支持 Small-to-Big parent context） ──
+    # ── 动态部分放在 user message 末尾 ──
     context_parts = []
     source_map: dict[str, dict[str, Any]] = {}
 
     for i, chunk in enumerate(retrieved_chunks, 1):
         meta = chunk["metadata"]
         filename = meta.get("filename", "未知")
-        page = meta.get("page", "")
-        para_start = meta.get("paragraph_start", "")
-        para_end = meta.get("paragraph_end", "")
         section_title = meta.get("section_title", meta.get("heading", ""))
         parent_content = meta.get("parent_content", "")
 
-        # 构建精确引用标记
-        ref_parts = [f"[{i}]"]
-        ref_parts.append(f"文件: {filename}")
+        ref_parts = [f"[{i}] 文件: {filename}"]
         if section_title:
             ref_parts.append(f"章节: {section_title}")
-        if page:
-            ref_parts.append(f"页码: {page}")
 
         source_tag = " | ".join(ref_parts)
 
-        # Small-to-Big: 如果存在 parent context，把更完整的上下文也提供
         chunk_content = chunk["text"]
         if parent_content and len(parent_content) > len(chunk_content) * 1.5:
             chunk_content = f"{chunk_content}\n\n> 📖 **完整上下文（本节）**\n{parent_content}"
@@ -200,68 +270,71 @@ def build_rag_prompt(
 
         source_map[str(i)] = {
             "filename": filename,
-            "page": str(page) if page else "",
+            "page": str(meta.get("page", "")),
             "section": section_title,
             "score": round(chunk["score"], 3),
             "text_preview": chunk["text"][:100],
         }
 
     context = "\n".join(context_parts)
-    num_sources = len(retrieved_chunks)
-    has_relevant = relevance["is_relevant"]
 
-    # ── 自身知识补充规则 ──
-    knowledge_rule = f"""
-## 自身知识补充规则
-1. **优先使用【参考文档】中的信息**，引用时标注编号 [1]、[2] 等
-2. {"" if has_relevant else "**【参考文档】与问题相关性较低**，请主要依靠你的自身知识来回答。"}
-3. 如果你要使用自身知识（而非参考文档）中的内容回答，必须用 **【自身知识】** 标注，例如：
-   - "根据参考文档[1]，肺栓塞CT表现为...（【自身知识】此外，急性PE的CTPA典型征象还包括...）"
-   - 或者单独段落：**（【自身知识】）** 后面跟你的补充内容
-4. 如果你对自身知识没有把握，请在回答末尾注明"**建议进一步查阅权威文献确认**"
-5. 严禁虚构引用——不要编造参考文档中不存在的 [编号]
-6. 即使参考文档为空或不相关，你也可以基于自身知识回答，但必须清晰标注"""
+    # 稳定前缀：跨请求不变（可命中 Prompt Cache）
+    stable_prefix = "请根据以下参考文档回答用户问题。\n## 参考文档\n"
 
-    # ── 完整 Prompt ──
-    prompt = f"""你是一个专业的 AI 知识助手，擅长结合检索到的资料和自身知识给出高质量回答。
+    # 动态后缀：随查询变化
+    dynamic_suffix = f"{context if context else '（无参考文档）'}\n\n## 用户问题\n{query}\n\n## 回答\n"
 
-## 核心原则
-1. **优先使用参考文档**：回答中首先使用【参考文档】提供的材料
-2. **自身知识补充**：当参考文档不足时，允许使用你的自身知识扩展回答，但必须明确标注
-3. **结构化输出**：按五段式结构输出
-4. **精确引用**：引用参考文档时标注 [编号]
+    user_content = stable_prefix + dynamic_suffix if use_prefix_cache else f"{stable_prefix}{dynamic_suffix}"
 
-## 输出格式（必须严格遵守）
+    messages = [
+        _cacheable_system_message(),
+        {"role": "user", "content": user_content},
+    ]
 
-**结论：**
-（1-2句话总结核心答案，包括参考文档中的关键信息和你自身知识的补充）
+    return messages, source_map, relevance
 
-**依据：**
-（分点列出，每条注明来源）
-（格式：N. 论述内容 [引用编号或【自身知识】]）
 
-**引用来源：**
-（列出实际引用的参考文档来源）
-> [1] 文件: xxx | 页码: x
-> [2] 文件: xxx | 页码: x
+def build_quick_prompt(
+    query: str,
+    retrieved_chunks: list[dict[str, Any]],
+    relevance: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, str]], dict[str, Any], dict[str, Any]]:
+    """构建快速回答 Prompt——只输出结论，≤150字，同样 cache 友好"""
+    if relevance is None:
+        relevance = compute_relevance(query, retrieved_chunks)
 
-**不确定信息：**
-（列出基于自身知识但不太确定的内容，如果没有则填"无"）
+    context_parts = []
+    source_map: dict[str, dict[str, Any]] = {}
+    for i, chunk in enumerate(retrieved_chunks[:2], 1):
+        meta = chunk["metadata"]
+        source_tag = f"[{i}] 文件: {meta.get('filename', '未知')}"
+        if meta.get("section_title"):
+            source_tag += f" | 章节: {meta['section_title']}"
+        context_parts.append(f"{source_tag}\n{chunk['text']}\n")
+        source_map[str(i)] = {"filename": meta.get("filename", ""), "text_preview": chunk["text"][:100]}
 
-**建议下一步：**
-（基于回答内容给出可操作建议）
-{knowledge_rule}
+    context = "\n".join(context_parts)
 
-## 参考文档
-{context if context else "（无参考文档）"}
+    stable_prefix = "请用最简洁的方式回答下面的医学问题。\n## 参考文档\n"
+    dynamic_suffix = f"{context if context else '（无）'}\n\n## 问题\n{query}\n\n## 快速回答\n"
 
-## 用户问题
-{query}
+    user_content = stable_prefix + dynamic_suffix
 
-## 回答
-"""
+    messages = [
+        _cacheable_system_message(),
+        {"role": "user", "content": user_content},
+    ]
 
-    return prompt, source_map, relevance
+    return messages, source_map, relevance
+
+
+def build_verbose_prompt(
+    query: str,
+    retrieved_chunks: list[dict[str, Any]],
+    relevance: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, str]], dict[str, Any], dict[str, Any]]:
+    """构建详细回答 Prompt——复用 build_rag_prompt"""
+    return build_rag_prompt(query, retrieved_chunks, relevance)
 
 
 # ──────────────────────────────────────────────
@@ -331,7 +404,7 @@ class LLMGenerator:
         api_key: str | None = None,
         base_url: str | None = None,
         model: str | None = None,
-        temperature: float = 0.1,  # 降低温度，减少幻觉
+        temperature: float = 0.2,  # 降低生成冗余，减少幻觉
         max_tokens: int = 2048,
         # 指数退避重试
         retry_max_attempts: int = 3,
@@ -340,7 +413,7 @@ class LLMGenerator:
         circuit_breaker_threshold: int = 5,
         circuit_breaker_timeout: float = 30.0,
     ):
-        # 按优先级读取 API 配置：DeepSeek > SiliconFlow > OpenAI
+        # 按优先级读取 API 配置：deepseek-chat
         self.api_key = (
             api_key or os.getenv("DEEPSEEK_API_KEY") or os.getenv("SILICON_API_KEY") or os.getenv("OPENAI_API_KEY", "")
         )
@@ -352,12 +425,15 @@ class LLMGenerator:
         )
         self.model = (
             model
-            or os.getenv("DEEPSEEK_MODEL")
+            or os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
             or os.getenv("SILICON_MODEL")
             or os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
         )
         self.temperature = temperature
         self.max_tokens = max_tokens if max_tokens else 4096  # 默认4096，适应混合回答
+        # 默认回答模式：简洁 400-600 tokens
+        self.default_max_tokens = 600
+        self.verbose_max_tokens = 1200
 
         # 指数退避重试配置
         self.retry_max_attempts = retry_max_attempts
@@ -450,6 +526,58 @@ class LLMGenerator:
 
         raise last_exception
 
+    def generate_stream(
+        self,
+        prompt_and_source: tuple,
+        validate: bool = True,
+    ) -> str:
+        """
+        调用大模型生成回答
+
+        参数:
+            prompt_and_source: (messages, source_map, relevance_info) 元组
+                messages = [{"role": "system", "content": "..."}, {"role": "user", "content": "..."}]
+                (兼容旧版 (str, dict, dict) 格式)
+            validate: 是否进行引用验证后处理
+
+        返回:
+            生成的回答文本
+        """
+        if isinstance(prompt_and_source[0], str):
+            # 旧版格式 (prompt_str, source_map, relevance) → 兼容
+            prompt, source_map, relevance = prompt_and_source
+            messages = [
+                {"role": "system", "content": "你是一个专业的 AI 知识助手。"},
+                {"role": "user", "content": prompt},
+            ]
+        else:
+            messages, source_map, relevance = prompt_and_source
+
+        has_valid_key = self._is_valid_api_key(self.api_key)
+
+        try:
+            if has_valid_key:
+                answer = self._call_openai_with_messages(messages)
+            else:
+                try:
+                    answer = self._call_ollama_with_messages(messages)
+                except Exception:
+                    answer = self._fallback_structured_response2(source_map, messages)
+
+            if validate and source_map:
+                citation_result = validate_citations(answer, source_map)
+                if citation_result["has_invalid_citations"]:
+                    invalid = citation_result["cited_invalid"]
+                    warning = (
+                        f"\n\n⚠️ **引用验证提示**：回答中引用了不存在的来源编号 {invalid}，"
+                        f"请以实际提供的【参考文档】编号为准。"
+                    )
+                    answer += warning
+
+            return answer
+        except Exception as e:
+            raise
+
     def generate(
         self,
         prompt_and_source: tuple,
@@ -465,40 +593,106 @@ class LLMGenerator:
         返回:
             生成的回答文本
         """
-        prompt, source_map, relevance = prompt_and_source
-        has_valid_key = self._is_valid_api_key(self.api_key)
+        return self.generate_stream(prompt_and_source, validate)
 
-        start = time.monotonic()
-        try:
-            # ── 检查 API Key 并调用模型 ──
-            if has_valid_key:
+    # ── 结构化生成入口（替代旧 generate，加 Self-reflection + Citation enforcement） ─────
+
+    def generate_structured(
+        self,
+        prompt_and_source: tuple,
+        self_reflect: bool = False,
+    ) -> dict:
+        """生成结构化 JSON 回答
+
+        流程：
+          1. 生成 JSON
+          2. 验证引用
+          3. （可选）Self-reflection：补全缺失字段
+          4. 引用不合法最多重试 1 次
+
+        Returns {"structured": dict, "raw": str, "valid": bool}
+        """
+        messages, source_map, relevance = prompt_and_source
+
+        # 第一次生成
+        raw = self.generate_stream((messages, source_map, relevance))
+        structured, valid = self._parse_json_response(raw, source_map)
+
+        # Citation enforcement：无效引用时重试一次
+        if not valid:
+            fix_prompt = (
+                "警告：上轮输出中包含无效引用编号或缺失引用。\n"
+                "请重新输出 JSON，确保每个 evidence 条目末尾有 [N] 标记，"
+                "且 N 来自下方参考文档中的编号。\n\n"
+                "可用编号: " + ", ".join(source_map.keys())
+            )
+            messages = messages + [
+                {"role": "assistant", "content": raw},
+                {"role": "user", "content": fix_prompt},
+            ]
+            raw = self.generate_stream((messages, source_map, relevance))
+            structured, valid = self._parse_json_response(raw, source_map)
+
+        # Self-reflection：补全 completeness
+        if self_reflect and valid:
+            missing = [k for k in ["diagnosis", "evidence", "suggestion", "uncertainty"] if not structured.get(k)]
+            if missing or len(structured.get("evidence", [])) < 2:
+                reflect_prompt = (
+                    "请基于参考文档补充以下缺失内容，只输出补充的 JSON 字段，不要重复已有内容。\n"
+                    "缺失字段: " + ", ".join(missing)
+                    if missing
+                    else "evidence 不足 2 条，请补充一条。\n"
+                )
+                messages = messages + [
+                    {"role": "assistant", "content": raw},
+                    {"role": "user", "content": reflect_prompt},
+                ]
+                raw2 = self.generate_stream((messages, source_map, relevance))
                 try:
-                    answer = self._call_openai(prompt)
-                except Exception as e:
-                    print(f"  ⚠️ API 调用失败: {e}")
-                    print("  🔄 使用本地模式...")
-                    answer = self._fallback_structured_response(prompt, source_map)
-            else:
-                # 本地 Ollama
-                try:
-                    answer = self._call_ollama(prompt)
+                    extra = json.loads(raw2.strip().removeprefix("```json").removesuffix("```").strip())
+                    structured.update(extra)
                 except Exception:
-                    answer = self._fallback_structured_response(prompt, source_map)
+                    pass
 
-            # ── 后处理：验证引用有效性 ──
-            if validate and source_map:
-                citation_result = validate_citations(answer, source_map)
-                if citation_result["has_invalid_citations"]:
-                    invalid = citation_result["cited_invalid"]
-                    warning = (
-                        f"\n\n⚠️ **引用验证提示**：回答中引用了不存在的来源编号 {invalid}，"
-                        f"请以实际提供的【参考文档】编号为准。"
-                    )
-                    answer += warning
+        return {"structured": structured, "raw": raw, "valid": valid}
 
-            return answer
-        except Exception as e:
-            raise
+    @staticmethod
+    def _parse_json_response(raw: str, source_map: dict) -> tuple[dict, bool]:
+        """解析 LLM 输出为 JSON，验证引用"""
+        try:
+            text = raw.strip()
+            # 去掉 markdown code fence（可能在开头或中间）
+            fence = "```"
+            if text.startswith(fence):
+                # remove leading ``` line
+                text = text.split("\n", 1)[1] if "\n" in text else text[len(fence) :]
+                # remove trailing ``` and anything after it
+                if fence in text:
+                    text = text[: text.index(fence)].strip()
+            elif fence in text:
+                # 可能 AI 回答了文字再输出 JSON
+                idx = text.index(fence)
+                text = text[idx + 3 :].strip()
+                end = text.index(fence) if fence in text else len(text)
+                text = text[:end].strip()
+            if text.startswith("json"):
+                text = text[4:].strip()
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            return {}, False
+
+        # 验证必备字段
+        for key in ["diagnosis", "evidence", "confidence"]:
+            if key not in data:
+                return data, False
+
+        # 验证引用：每个 evidence 必须有 [N]
+        valid_range = set(source_map.keys())
+        for ev in data.get("evidence", []):
+            cited = set(re.findall(r"\[(\d+)\]", ev))
+            if cited and not cited.issubset(valid_range):
+                return data, False
+        return data, True
 
     # ── Chat 接口（带 Circuit Breaker + 重试） ──────────
 
@@ -717,6 +911,29 @@ class LLMGenerator:
         )
         return response.choices[0].message.content
 
+    def _call_openai_chat_stream(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float | None = None,
+        max_tokens: int = 2048,
+    ):
+        """流式调用 OpenAI 兼容 API，逐 chunk yield token"""
+        from openai import OpenAI
+
+        client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=30)
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            temperature=temperature if temperature is not None else self.temperature,
+            max_tokens=max_tokens,
+            stream=True,
+            timeout=30,
+        )
+        for chunk in response:
+            delta = chunk.choices[0].delta if chunk.choices else None
+            if delta and delta.content:
+                yield delta.content
+
     def _call_ollama_chat(
         self,
         messages: list[dict[str, str]],
@@ -745,23 +962,72 @@ class LLMGenerator:
         """当 LLM 不可用时的兜底输出"""
         return f"[LLM 不可用: {reason}]"
 
+    def _call_openai_with_messages(self, messages: list[dict[str, str]]) -> str:
+        """调用 OpenAI 兼容 API（messages 列表格式，不重新包装）
+
+        Prompt Caching 兼容——直接透传 build_rag_prompt 的 messages 结构，
+        system message 作为 prefix cache 的 key。
+        """
+        wants_verbose = any(
+            kw in (messages[-1]["content"][:200] if messages else "") for kw in ["详细", "详细解释", "展开", "具体说明"]
+        )
+        mt = self.verbose_max_tokens if wants_verbose else self.default_max_tokens
+        return self._call_openai_chat(messages=messages, max_tokens=mt)
+
+    def _call_ollama_with_messages(self, messages: list[dict[str, str]]) -> str:
+        """调用本地 Ollama（messages 列表格式）"""
+        import requests
+
+        response = requests.post(
+            url=f"{os.getenv('OLLAMA_URL', 'http://localhost:11434')}/api/chat",
+            json={
+                "model": os.getenv("OLLAMA_MODEL", "qwen2.5:7b"),
+                "messages": messages,
+                "stream": False,
+                "options": {"temperature": self.temperature},
+            },
+            timeout=60,
+        )
+        response.raise_for_status()
+        return response.json()["message"]["content"]
+
+    def _fallback_structured_response2(
+        self, source_map: dict[str, dict[str, Any]], messages: list | None = None
+    ) -> str:
+        """无 API key 时的兜底回答（新版 messages 兼容）"""
+        if not source_map:
+            return self._build_refusal_response(_extract_query_from_messages(messages) if messages else "")
+
+        source_refs = []
+        for idx, info in source_map.items():
+            parts = [f"[{idx}] 文件: {info['filename']}"]
+            if info.get("page"):
+                parts.append(f"页码: {info['page']}")
+            source_refs.append(" | ".join(parts))
+
+        sources_section = "\n".join(f"> {s}" for s in source_refs)
+
+        return f"""**结论：**
+根据知识库中检索到的相关文档，该问题已有覆盖信息。
+
+**引用来源：**
+{sources_section}
+
+**不确定信息：**
+未配置大模型 API，当前为检索模式，无法生成 AI 推理回答。"""
+
     def _call_openai(self, prompt: str) -> str:
-        """调用 OpenAI 兼容 API（30s 超时）"""
+        """旧版兼容——将字符串 prompt 包装为 messages"""
+        wants_verbose = any(kw in prompt[:200] for kw in ["详细", "详细解释", "展开", "具体说明"])
+        mt = self.verbose_max_tokens if wants_verbose else self.default_max_tokens
         return self._call_openai_chat(
             messages=[
-                {
-                    "role": "system",
-                    "content": "你是一个专业的 AI 知识助手。"
-                    "你擅长结合提供的参考文档和自身知识给出高质量回答。"
-                    "使用参考文档时必须标注编号，使用自身知识时必须标注【自身知识】。"
-                    "严禁虚构引用，但允许基于自身知识合理补充。",
-                },
+                {"role": "system", "content": "你是一个专业的 AI 知识助手。"},
                 {"role": "user", "content": prompt},
             ],
-            max_tokens=4096,
+            max_tokens=mt,
         )
 
-    def _call_ollama(self, prompt: str) -> str:
         """调用本地 Ollama 服务"""
         import requests
 
@@ -842,11 +1108,10 @@ class LLMGenerator:
 
 
 def _extract_query_from_prompt(prompt: str) -> str:
-    """从 Prompt 中提取用户问题"""
+    """从 Prompt 中提取用户问题（旧版字符串格式）"""
     lines = prompt.split("\n")
     for i, line in enumerate(lines):
         if line.startswith("## 用户问题"):
-            # 取 "## 用户问题" 后面的内容，或者下一行
             rest = line.replace("## 用户问题", "").strip()
             if rest:
                 return rest
@@ -855,6 +1120,38 @@ def _extract_query_from_prompt(prompt: str) -> str:
     return ""
 
 
+def _extract_query_from_messages(messages: list[dict[str, str]] | None) -> str:
+    """从 messages 列表中提取用户问题（新版格式）"""
+    if not messages:
+        return ""
+    for msg in reversed(messages):
+        if msg.get("role") == "user":
+            content = msg.get("content", "")
+            # 从 "## 用户问题\n..." 中提取
+            if "## 用户问题" in content:
+                return content.split("## 用户问题")[-1].split("##")[0].strip()
+            if "## 问题" in content:
+                return content.split("## 问题")[-1].split("##")[0].strip()
+            # 直接当问题（简短的 user message）
+            if len(content) < 500:
+                return content[:200]
+    return ""
+
+
 def create_generator() -> LLMGenerator:
-    """创建生成器实例"""
+    """创建生成器实例（主回答用，从环境变量读取）"""
     return LLMGenerator()
+
+
+def create_rewrite_generator() -> LLMGenerator | None:
+    """创建 Query Rewriting 专用生成器
+
+    读取 REWRITE_API_KEY / REWRITE_BASE_URL / REWRITE_MODEL 环境变量。
+    未配置时返回 None（Retriever 会降级回退到主 generator）。
+    """
+    api_key = os.getenv("REWRITE_API_KEY", "")
+    base_url = os.getenv("REWRITE_BASE_URL", "")
+    model = os.getenv("REWRITE_MODEL", "")
+    if not api_key or not base_url or not model:
+        return None
+    return LLMGenerator(api_key=api_key, base_url=base_url, model=model)

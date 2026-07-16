@@ -16,7 +16,6 @@ from typing import Any
 
 from .embeddings import EmbeddingProvider
 from .lucene_bm25 import LuceneBM25Index
-from .vector_store import VectorStore
 
 # ── Query Rewriting 提示词 ──────────────────────────
 
@@ -50,6 +49,24 @@ CT 肺动脉造影 表现 判读
 原始问题：如何配置Kubernetes集群的RBAC权限？
 改写后的查询：
 如何配置Kubernetes集群的RBAC权限？
+
+## 示例 — 英文领域内问题（应该改写）
+原始问题：What are the CT signs of pulmonary embolism?
+改写后的查询：
+CT signs pulmonary embolism
+CT pulmonary angiography PE findings
+pulmonary embolism imaging diagnosis
+
+原始问题：How is DVT diagnosed?
+改写后的查询：
+DVT diagnosis methods
+deep vein thrombosis diagnostic criteria
+DVT Wells criteria assessment
+
+## 示例 — 英文领域外问题（不应该改写）
+原始问题：How do I configure Nginx reverse proxy?
+改写后的查询：
+How do I configure Nginx reverse proxy?
 
 原始问题：Python中如何使用async/await进行异步编程？
 改写后的查询：
@@ -101,36 +118,38 @@ class Retriever:
 
     def __init__(
         self,
-        vector_store: VectorStore,
+        vector_store,
         embedding_provider: EmbeddingProvider,
         top_k: int = 20,
         bm25_weight: float = 0.5,
         generator=None,
         enable_rewrite: bool = True,
         enable_reranker: bool = True,
-        rerank_top_k: int = 50,
+        rerank_top_k: int = 10,
         reranker=None,
         bm25_backend: str = "memory",
         bm25_index_dir: str = "lucene_bm25_index",
+        rewrite_generator=None,
     ):
         self.vector_store = vector_store
         self.embedding_provider = embedding_provider
         self.top_k = top_k
         self.bm25_weight = bm25_weight
-        # 无 generator 时自动禁用 rewrite 和 LLM reranker
         self.generator = generator
+        self.rewrite_generator = rewrite_generator
         self.enable_rewrite = enable_rewrite if generator else False
         self.enable_reranker = enable_reranker if generator else False
         self.rerank_top_k = rerank_top_k
-        self._reranker = reranker  # CrossEncoderReranker 实例
-        self._bm25 = None  # 内存 BM25Okapi 或 LuceneBM25Index
+        self._reranker = reranker
+        self._bm25 = None
         self._bm25_backend = bm25_backend if generator else "memory"
         self._bm25_index_dir = bm25_index_dir
         self._bm25_docs: list[str] = []
         self._bm25_ids: list[str] = []
-        self._original_query: str = ""  # 用于区分改写 query 和原始 query
-        self._was_rewritten: bool = False  # 标记 rewrite 是否产生了有意义的改写
-        self._out_of_domain: bool = False  # 标记 LLM 是否判断为领域外
+        self._bm25_meta: dict[str, dict] = {}
+        self._original_query: str = ""
+        self._was_rewritten: bool = False
+        self._out_of_domain: bool = False
 
     # ══════════════════════════════════════════════════
     #  主入口
@@ -139,7 +158,7 @@ class Retriever:
     def retrieve(self, query: str, top_k: int | None = None) -> list[dict[str, Any]]:
         """三级召回流水线
 
-        1. Query Rewriting（可选）
+        1. Rewrite Gate — 规则判断是否需要改写；若初始检索分低也触发
         2. Hybrid Search（向量 + BM25 -> RRF）
         3. Reranker（可选）
         """
@@ -159,10 +178,14 @@ class Retriever:
         # 记录原始 query，供后续区分改写 query
         self._original_query = query
 
-        # ── 阶段 0: Query Rewriting ──
-        search_queries = self._rewrite_query(query) if self._can_rewrite() else [query]
+        # ── 阶段 0: Rewrite Gate ──
+        needs_rewrite = self._can_rewrite() and self._rewrite_gate(query)
+        if needs_rewrite:
+            search_queries = self._rewrite_query(query)
+        else:
+            search_queries = [query]
 
-        # ── 阶段 1: Hybrid Search（每条改写 query 独立检索，结果去重合并） ──
+        # ── 阶段 1: 混合检索 ──
         all_results = []
         seen_ids: set = set()
         fetch_k = max(k * 2, 20)
@@ -175,7 +198,7 @@ class Retriever:
                     seen_ids.add(r["id"])
 
         # ── 阶段 2: Reranker ──
-        candidates = all_results[: max(self.rerank_top_k, k)]
+        candidates = all_results[: self.rerank_top_k]
         if self._can_rerank() and len(candidates) > k:
             reranked = self._rerank(query, candidates, k)
         else:
@@ -195,18 +218,58 @@ class Retriever:
     # ══════════════════════════════════════════════════
 
     def _can_rewrite(self) -> bool:
-        """检查是否满足 rewrite 条件"""
-        return self.enable_rewrite and self.generator is not None
+        """检查是否满足 rewrite 条件（优先用 rewrite_generator）"""
+        llm = self.rewrite_generator or self.generator
+        return self.enable_rewrite and llm is not None
+
+    @staticmethod
+    def _rewrite_gate(query: str) -> bool:
+        """Rewrite Gate — 规则门控，判断是否需要调用 LLM 改写
+
+        规则（满足任意一条即触发改写）:
+          1. 含中文疑问词/代词：什么、如何、为什么、怎样、哪些、哪个、区别
+          2. 含中文医疗/症状复合词：症状、治疗、诊断、检查、方案、预后、机制
+          3. 提问长度 > 15 个字符（短问句如"肺栓塞是什么"直接搜）
+          4. 含否定或条件逻辑：如果没有、是否、不是、除了
+          5. 含英文疑问词：what、how、why、which、when、where、who
+          6. 含英文医学关键术语：diagnosis、treatment、symptoms、signs、risk
+
+        返回 True → 走 LLM rewrite；False → 直接检索。
+        """
+        if len(query) > 15:
+            return True
+        _COMPLEX_PATTERNS = [
+            # 中文疑问词
+            r"(什么|如何|为什么|怎样|哪些|哪个|怎么|可否|是否)",
+            # 中文医疗术语
+            r"(症状|治疗|诊断|检查|方案|预后|机制|病因|预防)",
+            # 中文关系词
+            r"(区别|对比|关系|联系|影响|作用)",
+            # 中文条件否定
+            r"(如果|假如|没有|不是|除了|条件)",
+            # 英文疑问词
+            r"\b(what|how|why|which|when|where|who|whose|whom)\b",
+            # 英文医学关键术语
+            r"\b(diagnosis|treatment|symptoms|signs|risk|therapy|imaging|management|prognosis|prevention)\b",
+        ]
+        for pat in _COMPLEX_PATTERNS:
+            if re.search(pat, query, re.IGNORECASE):
+                return True
+        return False
 
     def _rewrite_query(self, query: str) -> list[str]:
         """调用 LLM 将用户问题改写为检索友好查询
 
+        优先使用 rewrite_generator（专用于改写的小模型），
+        未设置时回退到主 generator（DeepSeek 等）。
+
         返回 1-3 条搜索 query。LLM 失败时回退到 [原始 query]。
         """
+        llm = self.rewrite_generator or self.generator
         self._was_rewritten = False
         self._out_of_domain = False
         try:
-            response = self.generator.chat(
+            response = llm.chat(
                 messages=[
                     {"role": "system", "content": self.REWRITE_SYSTEM_PROMPT},
                     {"role": "user", "content": self.REWRITE_USER_PROMPT.format(query=query)},
@@ -289,54 +352,13 @@ class Retriever:
         return self.enable_reranker and (self._reranker is not None or self.generator is not None)
 
     def _rerank(self, query: str, chunks: list[dict[str, Any]], top_k: int) -> list[dict[str, Any]]:
-        """对候选 chunks 进行相关性重排序
-
-        优先使用 Cross-encoder reranker（高效），
-        回退到 LLM-as-reranker（贵，但准确）。
-        """
-        # ── Cross-encoder 优先 ──
+        """Cross-encoder 重排序"""
         if self._reranker is not None and self._reranker.model_ready:
             try:
                 return self._reranker.rerank(query, chunks, top_k)
             except Exception:
-                # cross-encoder 失败时回退 LLM
                 pass
-
-        # ── LLM-as-reranker（回退方案） ──
-        if self.generator is None:
-            return chunks[:top_k]
-
-        # 构建带编号的片段列表文本
-        chunk_lines = []
-        for i, c in enumerate(chunks):
-            text_preview = c["text"][:200].replace("\n", " ")
-            chunk_lines.append(f"[{i}] (来源: {c['metadata'].get('filename', '未知')}) {text_preview}")
-
-        chunks_text = "\n".join(chunk_lines)
-        user_prompt = self.RERANK_USER_PROMPT.format(query=query, chunks_text=chunks_text)
-
-        try:
-            response = self.generator.chat(
-                messages=[
-                    {"role": "system", "content": self.RERANK_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.0,
-                max_tokens=1024,
-            )
-        except Exception:
-            return chunks[:top_k]
-
-        scores = self._parse_rerank_response(response, len(chunks))
-        if scores is None or len(scores) != len(chunks):
-            return chunks[:top_k]
-
-        for i, c in enumerate(chunks):
-            c["_rerank_score"] = scores[i] if i < len(scores) else 0
-            c["score"] = scores[i]
-
-        reranked = sorted(chunks, key=lambda x: x["_rerank_score"], reverse=True)
-        return reranked[:top_k]
+        return chunks[:top_k]
 
     @staticmethod
     def _parse_rerank_response(response: str, expected_count: int) -> list[float] | None:
@@ -408,6 +430,7 @@ class Retriever:
 
         self._bm25_ids = [c["id"] for c in all_chunks]
         self._bm25_docs = [c["text"] for c in all_chunks]
+        self._bm25_meta = {c["id"]: c.get("metadata", {}) for c in all_chunks}
         tokenized_corpus = [self._bm25_tokenize(doc) for doc in self._bm25_docs]
         self._bm25 = BM25Okapi(tokenized_corpus)
 
@@ -460,13 +483,10 @@ class Retriever:
         return results
 
     def _find_chunk_by_id(self, chunk_id: str) -> dict[str, Any] | None:
-        try:
-            all_chunks = self.vector_store.get_all_documents()
-            for c in all_chunks:
-                if c["id"] == chunk_id:
-                    return c
-        except Exception:
-            pass
+        """从 _bm25_meta 缓存查找 metadata（O(1)，避免每次全量拉取）"""
+        meta = self._bm25_meta.get(chunk_id)
+        if meta is not None:
+            return {"metadata": meta}
         return None
 
     def get_bm25_info(self) -> dict[str, Any]:

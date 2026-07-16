@@ -8,11 +8,18 @@ from typing import Any
 
 from .document_loader import load_and_process_from_dir, load_documents_from_dir
 from .embeddings import get_embedding_provider
-from .generator import build_rag_prompt, compute_relevance, create_generator, validate_citations
+from .generator import (
+    build_quick_prompt,
+    build_rag_prompt,
+    compute_relevance,
+    create_generator,
+    create_rewrite_generator,
+    validate_citations,
+)
 from .logger import get_logger
+from .milvus_store import MilvusStore
 from .retriever import Retriever
 from .text_splitter import split_document
-from .vector_store import VectorStore, create_vector_store
 
 
 def _detect_embedding_dim(embedding_provider) -> int:
@@ -31,7 +38,6 @@ class RAGPipeline:
     def __init__(
         self,
         data_dir: str = "data",
-        persist_dir: str = "chroma_db",
         embedding_provider: str = "local",
         embedding_model: str | None = None,
         top_k: int = 3,
@@ -44,13 +50,12 @@ class RAGPipeline:
         cache_manager=None,
         bm25_backend: str = "memory",
         bm25_index_dir: str = "lucene_bm25_index",
-        vector_backend: str = "chroma",
+        vector_backend: str = "milvus",
         milvus_host: str = "localhost",
         milvus_port: str = "19530",
         milvus_lite: bool = False,
     ):
         self.data_dir = os.path.abspath(data_dir)
-        self.persist_dir = os.path.abspath(persist_dir)
         self.top_k = top_k
         self.chunk_min_chars = chunk_min_chars
         self.chunk_max_chars = chunk_max_chars
@@ -63,19 +68,18 @@ class RAGPipeline:
         collection_name = f"rag_docs_c{chunk_min_chars}_{chunk_max_chars}"
         self.embedding_provider = get_embedding_provider(embedding_provider, embedding_model)
 
-        if vector_backend == "milvus":
-            self.vector_store = create_vector_store(
-                backend="milvus",
-                collection_name=collection_name,
-                dim=_detect_embedding_dim(self.embedding_provider),
-                host=milvus_host,
-                port=milvus_port,
-                use_lite=milvus_lite,
-            )
-        else:
-            self.vector_store = VectorStore(persist_dir=persist_dir, collection_name=collection_name)
+        self.vector_store = MilvusStore(
+            collection_name=collection_name,
+            dim=_detect_embedding_dim(self.embedding_provider),
+            host=milvus_host,
+            port=milvus_port,
+            use_lite=milvus_lite,
+        )
 
         self.generator = create_generator()
+        self.rewrite_generator = create_rewrite_generator()
+        if self.rewrite_generator:
+            print("  🤖 Query Rewriting 专用模型: Qwen3-4B-Instruct (SiliconFlow)")
         self.logger = get_logger()
 
         self.retriever = Retriever(
@@ -88,6 +92,7 @@ class RAGPipeline:
             reranker=reranker,
             bm25_backend=bm25_backend,
             bm25_index_dir=bm25_index_dir,
+            rewrite_generator=self.rewrite_generator,
         )
 
     def close(self):
@@ -122,7 +127,9 @@ class RAGPipeline:
                 return 0
             all_chunks = []
             for doc in documents:
-                all_chunks.extend(split_document(doc, chunk_min_chars=self.chunk_min_chars, chunk_max_chars=self.chunk_max_chars))
+                all_chunks.extend(
+                    split_document(doc, chunk_min_chars=self.chunk_min_chars, chunk_max_chars=self.chunk_max_chars)
+                )
             print(f"  ✅ 共切分为 {len(all_chunks)} 个 Chunk\n")
 
         if not all_chunks:
@@ -137,10 +144,69 @@ class RAGPipeline:
             print(f"  📊 已处理 {min(i + batch_size, len(texts))}/{len(texts)}")
 
         self.vector_store.add_chunks(all_chunks, all_embeddings)
-        final_count = self.vector_store.count()
-        print(f"  ✅ 成功存入 {final_count} 个 Chunk\n")
+        print(f"  ✅ 成功存入 {len(all_chunks)} 个 Chunk\n")
         print("=" * 60 + "\n")
-        return final_count
+        return len(all_chunks)
+
+    def _retrieve_and_prepare(self, question: str, k: int) -> dict:
+        """共享检索逻辑：检索 → Small-to-Big 展开 → 相关性判断
+
+        Returns {
+            "retrieved_chunks": list[dict],
+            "relevance": dict,
+            "is_refusal": bool,
+            "cache_hit": str,
+        }
+        """
+        retrieved_chunks: list[dict[str, Any]] = []
+        cache_hit = "none"
+
+        # Retrieval Cache
+        if self._cache:
+            retrieved_chunks = self._cache.retrieval.get(question, k)
+            if retrieved_chunks:
+                cache_hit = "retrieval"
+                print(f"  ⚡ 检索缓存命中 ({len(retrieved_chunks)} chunks)\n")
+
+        if not retrieved_chunks:
+            print(f"📡 检索相关文档 (top_k={k})...")
+            retrieved_chunks = self.retriever.retrieve(question, top_k=k)
+            print(f"  ✅ 检索到 {len(retrieved_chunks)} 个相关片段\n")
+            if self._cache and retrieved_chunks:
+                self._cache.retrieval.set(question, k, retrieved_chunks)
+
+        # Small-to-Big 展开 + parent_content 去重
+        expanded = []
+        seen_parents = set()
+        for c in retrieved_chunks:
+            parent_content = c.get("metadata", {}).get("parent_content", "")
+            if parent_content:
+                if parent_content not in seen_parents:
+                    seen_parents.add(parent_content)
+                    c["text"] = parent_content
+                    c["_expanded"] = True
+                    expanded.append(c)
+            else:
+                expanded.append(c)
+        if expanded:
+            deduped = len(retrieved_chunks) - len(expanded)
+            print(f"  📐 Small-to-Big 展开完毕 (去重 {deduped} 个)\n")
+            retrieved_chunks = expanded
+
+        # 相关性判断
+        relevance = compute_relevance(question, retrieved_chunks)
+        is_refusal = False
+        if getattr(self.retriever, "_out_of_domain", False):
+            relevance["is_relevant"] = False
+            relevance["reason"] = "LLM Query Rewriting 判定为领域外问题"
+            is_refusal = True
+
+        return {
+            "retrieved_chunks": retrieved_chunks,
+            "relevance": relevance,
+            "is_refusal": is_refusal,
+            "cache_hit": cache_hit,
+        }
 
     def query(self, question: str, top_k: int | None = None) -> dict[str, Any]:
         start_time = time.time()
@@ -167,63 +233,30 @@ class RAGPipeline:
         print(f"{'=' * 60}\n")
 
         try:
-            # 2. Retrieval Cache
-            if self._cache:
-                retrieved_chunks = self._cache.retrieval.get(question, k)
-                if retrieved_chunks:
-                    cache_hit = "retrieval"
-                    print(f"  ⚡ 检索缓存命中 ({len(retrieved_chunks)} chunks)\n")
+            # 2. 共享检索逻辑
+            prep = self._retrieve_and_prepare(question, k)
+            retrieved_chunks = prep["retrieved_chunks"]
+            relevance = prep["relevance"]
+            is_refusal = prep["is_refusal"]
+            cache_hit = prep["cache_hit"]
 
-            if not retrieved_chunks:
-                print(f"📡 检索相关文档 (top_k={k})...")
-                retrieved_chunks = self.retriever.retrieve(question, top_k=k)
-                print(f"  ✅ 检索到 {len(retrieved_chunks)} 个相关片段\n")
-                if self._cache and retrieved_chunks:
-                    self._cache.retrieval.set(question, k, retrieved_chunks)
-
-            # Small-to-Big 展开
-            expanded = []
-            seen_parents = set()
-            for c in retrieved_chunks:
-                parent_content = c.get("metadata", {}).get("parent_content", "")
-                if parent_content:
-                    parent_key = str(hash(parent_content))
-                    if parent_key not in seen_parents:
-                        seen_parents.add(parent_key)
-                        c["text"] = parent_content
-                        c["_expanded"] = True
-                        expanded.append(c)
-                else:
-                    expanded.append(c)
-            if expanded:
-                deduped = len(retrieved_chunks) - len(expanded)
-                print(f"  📐 Small-to-Big 展开完毕 (去重 {deduped} 个)\n")
-                retrieved_chunks = expanded
-
-            # 相关性判断
-            relevance = compute_relevance(question, retrieved_chunks)
-
-            if getattr(self.retriever, "_out_of_domain", False):
-                relevance["is_relevant"] = False
-                relevance["reason"] = f"LLM Query Rewriting 判定为领域外问题"
-                is_refusal = True
-
-            # 生成回答
+            # 生成结构化回答
             print("🤖 生成回答...")
             prompt_data = build_rag_prompt(question, retrieved_chunks, relevance)
-            answer = self.generator.generate(prompt_data)
+            gen = self.generator.generate_structured(prompt_data, self_reflect=True)
+            answer = gen["raw"]
+            structured = gen["structured"]
+            citation_result = {"cited_valid": [], "cited_invalid": [], "has_invalid_citations": False}
 
-            # 引用验证
-            if relevance["is_relevant"] and retrieved_chunks:
+            if gen["valid"] and relevance["is_relevant"]:
                 source_map = prompt_data[1] if len(prompt_data) >= 2 else {}
                 citation_result = validate_citations(answer, source_map)
-            else:
-                citation_result = {"cited_valid": [], "cited_invalid": [], "has_invalid_citations": False}
 
         except Exception as e:
             error = str(e)
             answer = f"系统错误: {error}"
             retrieved_chunks = []
+            structured = {}
             relevance = {"is_relevant": False, "top1_score": 0, "avg_score": 0, "overlap": 0, "reason": ""}
             citation_result = {"cited_valid": [], "cited_invalid": [], "has_invalid_citations": False}
             print(f"  ❌ 错误: {error}")
@@ -246,6 +279,7 @@ class RAGPipeline:
         return {
             "question": question,
             "answer": answer,
+            "structured": structured,
             "sources": retrieved_chunks,
             "time": elapsed,
             "error": error,
@@ -254,3 +288,68 @@ class RAGPipeline:
             "citation_validation": citation_result,
             "cache_hit": cache_hit,
         }
+
+    def query_stream(self, question: str, top_k: int | None = None):
+        """流式查询——yield SSE event dict，每阶段推送进度"""
+        start_time = time.time()
+        k = top_k or self.top_k
+
+        # 1. Answer Cache check
+        if self._cache:
+            try:
+                cached = self._cache.answer.get(question)
+                if cached:
+                    yield {"event": "answer", "data": cached["answer"]}
+                    yield {"event": "sources", "data": cached.get("sources", [])}
+                    yield {"event": "elapsed", "data": time.time() - start_time}
+                    yield {"event": "cache_hit", "data": "answer"}
+                    yield {"event": "done", "data": ""}
+                    return
+            except Exception:
+                pass
+
+        yield {"event": "status", "data": "🔍 正在检索医学知识库..."}
+
+        try:
+            # 2. 共享检索逻辑
+            prep = self._retrieve_and_prepare(question, k)
+            retrieved_chunks = prep["retrieved_chunks"]
+            relevance = prep["relevance"]
+            is_refusal = prep["is_refusal"]
+
+            yield {"event": "status", "data": f"✅ 已找到 {len(retrieved_chunks)} 条相关依据"}
+            yield {"event": "sources", "data": retrieved_chunks}
+
+            if is_refusal or not relevance["is_relevant"]:
+                yield {"event": "status", "data": "🤖 正在生成回答..."}
+                quick_prompt_data = build_quick_prompt(question, retrieved_chunks, relevance)
+                gen = self.generator.generate_structured(quick_prompt_data)
+                yield {"event": "answer", "data": gen["raw"]}
+            else:
+                yield {"event": "status", "data": "🤖 正在生成快速回答..."}
+                quick_prompt_data = build_quick_prompt(question, retrieved_chunks, relevance)
+                gen = self.generator.generate_structured(quick_prompt_data, self_reflect=False)
+                yield {"event": "quick_answer", "data": gen["raw"]}
+
+                verbose_prompt_data = build_rag_prompt(question, retrieved_chunks, relevance)
+                gen2 = self.generator.generate_structured(verbose_prompt_data, self_reflect=True)
+                yield {"event": "verbose_answer", "data": gen2["raw"]}
+
+        except Exception as e:
+            yield {"event": "error", "data": str(e)}
+            return
+
+        elapsed = time.time() - start_time
+        yield {"event": "elapsed", "data": elapsed}
+
+        self.logger.log_query(
+            question=question,
+            retrieved_chunks=retrieved_chunks,
+            answer="(streaming)",
+            elapsed=elapsed,
+            error=None if not is_refusal else "refusal",
+            is_refusal=is_refusal,
+            top_k=k,
+        )
+
+        yield {"event": "done", "data": ""}

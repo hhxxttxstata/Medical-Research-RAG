@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { type Message } from "@/hooks/use-chat"
 import { cn } from "@/lib/utils"
-import { Bot, User, RefreshCw, Clock, CheckCircle2, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react"
+import { Bot, User, RefreshCw, Clock, CheckCircle2, AlertTriangle, ChevronDown, ChevronRight, ThumbsUp, ThumbsDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
@@ -12,6 +12,7 @@ import { SourceList } from "./source-list"
 
 interface ChatMessageProps {
   message: Message
+  onFeedback?: (messageId: string, rating: 0 | 1) => void
 }
 
 interface AnswerSections {
@@ -91,7 +92,7 @@ function SectionBlock({ title, content, defaultOpen = false }: { title: string; 
   )
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({ message, onFeedback }: ChatMessageProps) {
   const isUser = message.role === "user"
   const isStreaming = message.isStreaming
 
@@ -156,9 +157,8 @@ export function ChatMessage({ message }: ChatMessageProps) {
               </div>
             )}
 
-            {hasSections ? (
+            {hasSections || isRefusal(message.content) ? (
               <div className="space-y-2">
-                {/* 结论 — always visible */}
                 {sections.conclusion && (
                   <div className="rounded-lg border border-border bg-card/50 px-3 py-2">
                     <div className="text-xs font-semibold text-foreground/70 mb-1">📌 结论</div>
@@ -168,8 +168,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
                     />
                   </div>
                 )}
-
-                {/* 建议下一步 — always visible */}
                 {sections.nextSteps && (
                   <div className="rounded-lg border border-border bg-card/50 px-3 py-2">
                     <div className="text-xs font-semibold text-foreground/70 mb-1">👉 建议下一步</div>
@@ -179,17 +177,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
                     />
                   </div>
                 )}
-
-                <Separator className="my-1" />
-
-                {/* Collapsible sections */}
                 <div className="space-y-0.5">
                   <SectionBlock title="📋 依据" content={sections.evidence} />
                   <SectionBlock title="📚 引用来源" content={sections.sources} />
-                  <SectionBlock title="⚠️ 不确定信息" content={sections.uncertain} />
                 </div>
-
-                {/* If it's a refusal, show the full text as fallback */}
                 {isRefusal(message.content) && !sections.conclusion && (
                   <div
                     className="prose-chat text-sm"
@@ -198,10 +189,26 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 )}
               </div>
             ) : (
-              <div
-                className="prose-chat text-sm"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
-              />
+              <>
+                <div
+                  className="prose-chat text-sm"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
+                />
+
+                {/* 两段式：快答后有 verboseContent 且未展开 → 显示"展开详细"按钮 */}
+                {message.verboseContent && !message.expanded && (
+                  <button
+                    onClick={() => {
+                      // Call back to parent to expand
+                      const ev = new CustomEvent("expand-answer", { detail: message.id })
+                      window.dispatchEvent(ev)
+                    }}
+                    className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors cursor-pointer"
+                  >
+                    📖 展开详细回答
+                  </button>
+                )}
+              </>
             )}
 
             {/* Process Log */}
@@ -215,6 +222,27 @@ export function ChatMessage({ message }: ChatMessageProps) {
             {message.sources && message.sources.length > 0 && (
               <div className="mt-3">
                 <SourceList sources={message.sources} />
+              </div>
+            )}
+
+            {/* Feedback buttons */}
+            {!message.isStreaming && message.content && (
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground/50">这个回答对你有帮助吗？</span>
+                <button
+                  onClick={() => onFeedback?.(message.id, 1)}
+                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/60 hover:text-green-600 transition-colors"
+                  title="有帮助"
+                >
+                  <ThumbsUp size={13} />
+                </button>
+                <button
+                  onClick={() => onFeedback?.(message.id, 0)}
+                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/60 hover:text-red-500 transition-colors"
+                  title="没帮助"
+                >
+                  <ThumbsDown size={13} />
+                </button>
               </div>
             )}
           </>

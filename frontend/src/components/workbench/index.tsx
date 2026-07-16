@@ -421,7 +421,7 @@ function SettingsPanel() {
 // ─── Main Workbench ──────────────────────────────
 
 export function Workbench() {
-  const { messages, isLoading, sendMessage, diagnose, clearMessages } = useChat()
+  const { messages, isLoading, sendMessage, diagnose, clearMessages, submitFeedback } = useChat()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [activeNav, setActiveNav] = useState<NavPanel>("chat")
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null)
@@ -607,7 +607,7 @@ export function Workbench() {
                         msg.role === "assistant" && "cursor-pointer",
                       )}
                     >
-                      <ChatMessage message={msg} />
+                      <ChatMessage message={msg} onFeedback={(mid, r) => submitFeedback(msg, r)} />
                     </div>
                   ))}
                   {messages.length > 0 && messages[messages.length - 1].role === "user" && isLoading && (
