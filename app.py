@@ -3,14 +3,17 @@ FastAPI 应用入口 — RAG 问答 + CTPA 诊断
 接口:
   GET  /health              — 健康检查
   POST /documents/upload    — 上传文档入库
-  POST /chat                — RAG 问答
+  POST /chat                — RAG 问答（阻塞）
+  POST /chat/stream         — RAG 问答（SSE 流式）
   POST /diagnosis/predict   — CTPA 影像诊断
   GET  /diagnosis/model     — 诊断模型状态
   GET  /logs                — 请求日志
   GET  /stats               — 运行统计
 """
 
+import asyncio
 import concurrent.futures
+import csv
 import json
 import os
 import sys
@@ -18,7 +21,6 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -26,11 +28,12 @@ if sys.platform == "win32":
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile, Depends
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from src.auth import verify_api_key, verify_admin_api_key
+from src.auth import verify_admin_api_key, verify_api_key
 from src.cache import CacheManager, RedisClient
 from src.diagnosis import CTPADiagnosisModel, create_diagnosis_model
 from src.document_loader import load_document
@@ -47,14 +50,17 @@ from src.watcher import DocumentWatcher
 
 class Settings:
     data_dir: str = os.path.abspath("data")
-    persist_dir: str = os.path.abspath("chroma_db")
     upload_dir: str = os.path.abspath("data")
     log_dir: str = os.path.abspath("logs")
     embedding_provider: str = "local"
     embedding_model: str | None = None
-    top_k: int = 20
+    top_k: int = 10
     chunk_min_chars: int = 300
     chunk_max_chars: int = 500
+    vector_backend: str = "milvus"
+    milvus_host: str = "milvus"
+    milvus_port: str = "19530"
+    milvus_lite: bool = False
 
 
 settings = Settings()
@@ -126,6 +132,14 @@ class DiagnosisModelStatus(BaseModel):
     error: str | None = None
 
 
+class FeedbackRequest(BaseModel):
+    question: str = Field(..., min_length=1)
+    answer: str = Field(..., min_length=1)
+    rating: int = Field(..., ge=0, le=1, description="0=差 1=好")
+    reason: str = Field(default="", max_length=100)
+    message_id: str = Field(default="")
+
+
 # ── FastAPI 应用 ──────────────────────────────────────
 
 app = FastAPI(
@@ -155,7 +169,6 @@ async def startup():
     print("=" * 60)
 
     os.makedirs(settings.data_dir, exist_ok=True)
-    os.makedirs(settings.persist_dir, exist_ok=True)
     os.makedirs(settings.log_dir, exist_ok=True)
 
     # Reranker
@@ -177,7 +190,6 @@ async def startup():
     # 管道
     pipeline = RAGPipeline(
         data_dir=settings.data_dir,
-        persist_dir=settings.persist_dir,
         embedding_provider=settings.embedding_provider,
         embedding_model=settings.embedding_model,
         top_k=settings.top_k,
@@ -186,6 +198,10 @@ async def startup():
         enable_reranker=True,
         reranker=reranker if reranker.model_ready else None,
         cache_manager=cache_manager,
+        vector_backend=settings.vector_backend,
+        milvus_host=settings.milvus_host,
+        milvus_port=settings.milvus_port,
+        milvus_lite=settings.milvus_lite,
     )
 
     count = pipeline.vector_store.count()
@@ -251,7 +267,6 @@ def _init_diagnosis_model():
         err = diagnosis_model.load_error if diagnosis_model else "创建失败"
         print(f"  ⚠️  肺栓塞诊断模型未加载: {err}")
         print("  💡 设置 PE_MODEL_PATH 环境变量")
-
 
 
 # ── 接口 1: 健康检查 ─────────────────────────────────
@@ -342,9 +357,7 @@ async def run_blocking(fn, *args, **kwargs):
     return await loop.run_in_executor(_THREAD_POOL, lambda: fn(*args, **kwargs))
 
 
-# ── 接口 3: RAG 问答 ────────────────────────────────
-
-import asyncio
+# ── 接口 3: RAG 问答（阻塞） ─────────────────────────
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -405,7 +418,56 @@ async def chat(req: ChatRequest, request: Request, _: None = Depends(verify_api_
     )
 
 
-# ── 接口 4: 肺栓塞诊断 ────────────────────────────────
+# ── 接口 4: RAG 流式问答（SSE） ────────────────────────
+
+
+def _sse(event: str, data) -> str:
+    return json.dumps({"event": event, "data": data}, ensure_ascii=False, default=str)
+
+
+@app.post("/chat/stream")
+async def chat_stream(req: ChatRequest):
+    """流式 SSE 端点
+
+    后端在后台线程执行 query_stream（分阶段：检索→生成→token），
+    所有事件通过 SSE 推送给前端。
+
+    事件类型:
+      - status:  过程状态信息（检索中/已找到 N 条/生成中）
+      - token:   LLM 的一个 token
+      - answer:  一次性推完整回答（拒答或缓存命中时）
+      - sources: 检索到的来源
+      - elapsed: 总耗时
+      - error:   错误消息
+      - done:    结束标记
+    """
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="服务尚未初始化完成")
+
+    question = req.question.strip()
+
+    is_injection, injection_reason = detect_injection(question)
+    if is_injection:
+
+        async def reject():
+            yield f"data: {_sse('error', f'输入被拒绝: {injection_reason}')}\n\n"
+            yield f"data: {_sse('done', '')}\n\n"
+
+        return StreamingResponse(reject(), media_type="text/event-stream")
+
+    async def generate():
+        loop = asyncio.get_running_loop()
+        gen = pipeline.query_stream(question, req.top_k)
+        while True:
+            ev = await loop.run_in_executor(_THREAD_POOL, lambda: next(gen, None))
+            if ev is None:
+                break
+            yield f"data: {_sse(ev['event'], ev['data'])}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+# ── 接口 5: 肺栓塞诊断 ────────────────────────────────
 
 
 @app.post("/diagnosis/predict", response_model=DiagnosisPredictResponse)
@@ -482,7 +544,7 @@ async def diagnosis_model_status(_: None = Depends(verify_api_key)):
     return DiagnosisModelStatus(loaded=False, error="诊断模型未初始化")
 
 
-# ── 接口 5: 日志查询 ─────────────────────────────────
+# ── 接口 6: 日志查询 ─────────────────────────────────
 
 
 @app.get("/logs")
@@ -539,7 +601,7 @@ async def get_stats(_: None = Depends(verify_api_key)):
     )
 
 
-# ── 接口 6: 知识库管理 ──────────────────────────────
+# ── 接口 7: 知识库管理 ──────────────────────────────
 
 
 @app.get("/knowledge-base/collections")
@@ -554,6 +616,50 @@ async def kb_list_tags(_: None = Depends(verify_api_key)):
     if pipeline is None:
         raise HTTPException(status_code=503, detail="服务尚未初始化完成")
     return {"success": True, "tags": KnowledgeBase.get_all_tags(pipeline.vector_store)}
+
+
+# ── 接口 8: Bad Case 反馈 ─────────────────────────
+
+
+@app.post("/feedback")
+async def submit_feedback(req: FeedbackRequest):
+    """用户反馈（👍/👎），存入 logs/feedback.csv"""
+    feedback_dir = os.path.join(settings.log_dir)
+    os.makedirs(feedback_dir, exist_ok=True)
+    path = os.path.join(feedback_dir, "feedback.csv")
+    exists = os.path.exists(path)
+    with open(path, "a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        if not exists:
+            writer.writerow(["timestamp", "question", "answer", "rating", "reason", "message_id"])
+        writer.writerow(
+            [
+                datetime.now().isoformat(),
+                req.question,
+                req.answer,
+                req.rating,
+                req.reason,
+                req.message_id,
+            ]
+        )
+    return {"success": True}
+
+
+@app.get("/feedback")
+async def list_feedback(
+    n: int = Query(50, ge=1, le=500),
+    _: None = Depends(verify_admin_api_key),
+):
+    """获取用户反馈列表（管理用）"""
+    path = os.path.join(settings.log_dir, "feedback.csv")
+    if not os.path.exists(path):
+        return {"success": True, "records": []}
+    records = []
+    with open(path, encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            records.append(row)
+    return {"success": True, "records": records[-n:]}
 
 
 # ── 辅助 ──────────────────────────────────────────────

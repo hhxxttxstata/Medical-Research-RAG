@@ -75,6 +75,14 @@ export interface HealthResponse {
   timestamp: string
 }
 
+export interface FeedbackRequest {
+  question: string
+  answer: string
+  rating: 0 | 1
+  reason: string
+  message_id: string
+}
+
 export interface StatsResponse {
   date: string
   total_queries: number
@@ -152,5 +160,9 @@ export const api = {
 
   logs(n = 10): Promise<{ records: Array<Record<string, unknown>> }> {
     return fetch(`${API_BASE}/logs?n=${n}`).then((r) => r.json())
+  },
+
+  feedback(req: FeedbackRequest): Promise<{ success: boolean }> {
+    return postJSON(`${API_BASE}/feedback`, req)
   },
 }

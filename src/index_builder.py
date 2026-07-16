@@ -19,8 +19,8 @@ from .document_loader import load_and_process_from_dir, load_documents_from_dir
 from .document_processor import process_document
 from .embeddings import get_embedding_provider
 from .lucene_bm25 import LuceneBM25Index
+from .milvus_store import MilvusStore
 from .text_splitter import split_document
-from .vector_store import create_vector_store
 
 
 class IndexBuilder:
@@ -40,9 +40,8 @@ class IndexBuilder:
     def __init__(
         self,
         data_dir: str = "data",
-        vector_backend: str = "chroma",  # "chroma" | "milvus"
+        vector_backend: str = "milvus",
         bm25_index_dir: str = "lucene_bm25_index",
-        persist_dir: str = "chroma_db",
         collection_name: str = "rag_docs",
         embedding_provider: str = "local",
         embedding_model: str | None = None,
@@ -55,7 +54,7 @@ class IndexBuilder:
         dim: int = 768,
     ):
         self.data_dir = os.path.abspath(data_dir)
-        self.vector_backend = vector_backend
+        self.bm25_index_dir = bm25_index_dir
         self.bm25_index_dir = bm25_index_dir
         self.collection_name = collection_name
         self.chunk_min_chars = chunk_min_chars
@@ -66,22 +65,13 @@ class IndexBuilder:
         self.embedding_provider = get_embedding_provider(embedding_provider, embedding_model)
         self.lucene_bm25 = LuceneBM25Index(index_dir=bm25_index_dir)
 
-        # 向量存储
-        if vector_backend == "milvus":
-            self.vector_store = create_vector_store(
-                backend="milvus",
-                collection_name=collection_name,
-                dim=dim,
-                host=milvus_host,
-                port=milvus_port,
-                use_lite=milvus_lite,
-            )
-        else:
-            self.vector_store = create_vector_store(
-                backend="chroma",
-                persist_dir=persist_dir,
-                collection_name=collection_name,
-            )
+        self.vector_store = MilvusStore(
+            collection_name=collection_name,
+            dim=dim,
+            host=milvus_host,
+            port=milvus_port,
+            use_lite=milvus_lite,
+        )
 
     # ── 全量构建 ────────────────────────────────────
 

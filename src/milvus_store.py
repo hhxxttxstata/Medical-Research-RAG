@@ -24,6 +24,7 @@ Milvus 向量数据库封装
 
 import json
 import os
+import sys
 import time
 from typing import Any
 
@@ -84,29 +85,13 @@ class MilvusStore:
         self._ensure_collection()
 
     def _ensure_imports(self):
-        """延迟导入 pymilvus 模块，避免没有安装时报 ImportError"""
-        global MilvusClient, DataType, IndexType, MetricType
-        if self.use_lite:
-            try:
-                from pymilvus import DataType, IndexType, MetricType, MilvusClient
-
-                self._client_class = MilvusClient
-                self._use_lite = True
-            except ImportError:
-                print("  ⚠️ pymilvus[milvus-lite] 未安装，回退到 Milvus 服务模式")
-                from pymilvus import DataType, IndexType, MetricType, MilvusClient
-
-                self._client_class = MilvusClient
-                self._use_lite = False
-        else:
-            from pymilvus import DataType, IndexType, MetricType, MilvusClient
-
-            self._client_class = MilvusClient
-            self._use_lite = False
+        """延迟导入 pymilvus 模块"""
+        global MilvusClient, DataType
+        from pymilvus import DataType, MilvusClient
 
         self.DataType = DataType
-        self.IndexType = IndexType
-        self.MetricType = MetricType
+        self._client_class = MilvusClient
+        self._use_lite = self.use_lite
 
     def _do_connect(self):
         """建立与 Milvus 的连接"""
@@ -127,7 +112,7 @@ class MilvusStore:
                 last_error = e
                 if attempt < _MAX_RETRIES - 1:
                     time.sleep(_RETRY_DELAY * (attempt + 1))
-        print(f"  ⚠️ Milvus 连接失败: {last_error}. 将使用 ChromaDB 回退。")
+        print(f"  ⚠️ Milvus 连接失败: {last_error}.")
         self._connected = False
 
     def _ensure_collection(self):
@@ -160,8 +145,8 @@ class MilvusStore:
             index_params = self._client.prepare_index_params()
             index_params.add_index(
                 field_name="embedding",
-                index_type=self.IndexType.IVF_FLAT,
-                metric_type=self.MetricType.IP,
+                index_type="IVF_FLAT",
+                metric_type="IP",
                 params={"nlist": 128},
             )
 
@@ -220,11 +205,12 @@ class MilvusStore:
                 print(f"  ⚠️ Milvus 批量插入失败 (batch {i}): {e}")
 
         if inserted > 0:
-            # 写入后刷新索引
-            try:
-                self._client.flush(self.collection_name)
-            except Exception:
-                pass
+            # 写入后刷新索引（Windows Milvus Lite 有 os.rename 竞态，跳过）
+            if not sys.platform == "win32":
+                try:
+                    self._client.flush(self.collection_name)
+                except Exception:
+                    pass
             print(f"  ✅ 插入 {inserted} 条向量到 Milvus 集合 '{self.collection_name}'")
 
     # ── 向量检索 ────────────────────────────────────
@@ -251,7 +237,7 @@ class MilvusStore:
 
         try:
             search_params = {
-                "metric_type": self.MetricType.IP,
+                "metric_type": "IP",
                 "params": {"nprobe": 16},
             }
 
@@ -313,6 +299,7 @@ class MilvusStore:
             if target == self.collection_name:
                 self._collection = None
             print(f"  🗑️ 已删除 Milvus 集合 '{target}'")
+            self._connected = False  # 下次 _connect() 重新创建集合
         except Exception as e:
             print(f"  ⚠️ 删除 Milvus 集合失败: {e}")
 

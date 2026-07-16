@@ -16,13 +16,13 @@ services:
     volumes:
       # bind mount: 改源码只需 restart 不用 rebuild
       - ./app.py:/app/app.py:ro
-      - ./src:/app/src:ro
+      - ./src:/app/src
       - ./models:/app/models:ro
       - ./data:/app/data
       - ./chroma_db:/app/chroma_db
       - ./logs:/app/logs
       # 复用本地 HuggingFace 模型缓存，避免每次部署重新下载
-      - ~/.cache/huggingface:/root/.cache/huggingface:ro
+      - ~/.cache/huggingface:/root/.cache/huggingface
     env_file:
       - .env
     environment:
@@ -35,6 +35,11 @@ services:
       retries: 5
       start_period: 120s
     restart: unless-stopped
+    depends_on:
+      milvus:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   frontend:
     build:
@@ -70,3 +75,85 @@ services:
     restart: unless-stopped
     profiles:
       - gradio  # 默认不启动: docker compose --profile gradio up -d
+
+  # ── Milvus 向量数据库 ─────────────────────────────
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.6
+    container_name: milvus-etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - etcd_data:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: milvus-minio
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - minio_data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  milvus:
+    image: milvusdb/milvus:v2.5.5
+    container_name: milvus-standalone
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - milvus_data:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "--max-time", "3", "http://localhost:9091/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+    restart: unless-stopped
+
+  # ── Redis 缓存 ──────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: pe-redis
+    command: redis-server --appendonly yes --save 300 10
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  etcd_data:
+  minio_data:
+  milvus_data:
+  redis_data:

@@ -252,7 +252,7 @@ class AnswerCache:
 
     REDIS_PREFIX = "ans:"
     MEM_TTL = 1800  # 30min
-    SEMANTIC_THRESHOLD = 0.92
+    SEMANTIC_THRESHOLD = 0.85
 
     def __init__(self, maxsize: int = 1000, embedding_fn=None):
         self._mem = LRUCache(maxsize=maxsize, default_ttl=self.MEM_TTL)

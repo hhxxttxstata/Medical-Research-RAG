@@ -1,6 +1,7 @@
-# 向量数据库
+# 向量数据库（已迁移到 Milvus）
 chroma_db/
 chroma_db_eval/
+chroma_db_eval_tmp/
 chroma.sqlite3
 
 # 日志

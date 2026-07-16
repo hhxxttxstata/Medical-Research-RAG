@@ -1,5 +1,4 @@
 # RAG 系统 Docker 部署依赖
-chromadb
 sentence-transformers>=5.4.0
 marker-pdf>=0.3.0
 openai>=2.0.0
@@ -14,3 +13,5 @@ redis>=5.0.0
 nibabel>=5.0.0
 scipy>=1.7.0
 matplotlib
+pymilvus>=2.5.0
+pymupdf>=1.25.0
