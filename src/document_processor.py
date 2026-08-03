@@ -11,19 +11,24 @@
     │      ├─ 2a. OCRController ── 扫描件检测 + Tesseract 兜底
     │      └─ 2b. MarkdownConverter ─ 多栏/表格/图片占位 → Markdown
     │
-    └─ 3. SmartChunker ──────── Section-aware Small-to-Big 切分
+    ├─ 3. CleanupPipeline ──── 手写数据清理管线（6 条规则 + 质量门禁）
+    │      规则：unicode_normalize / collapse_blanks / remove_footers
+    │           normalize_headings / detect_low_value / quality_gate
+    │      产出：干净的 Markdown + 可追溯日志 + 质量评分
+    │
+    └─ 4. SmartChunker ──────── Section-aware Small-to-Big 切分
          ├─ small chunks (200-500字) → 用于向量检索
          └─ parent chunks (800-2000字) → 用于 LLM 上下文注入
 
 面试价值：
   - Marker 一条龙：OCR + 表格 + 公式 + 多栏，业界最佳 PDF→Markdown 方案
-  - Small-to-Big 架构在业界 RAG 应用中是最佳实践（LlamaIndex 的核心策略）
+  - 手写规则管线 vs 黑盒模型：可控、可解释、可调试
+  - Small-to-Big + Quality Gate 生产级 RAG 标配架构
   - 所有依赖可选，无 Marker 环境自动降级
 """
 
 import os
 import re
-import sys
 import tempfile
 from dataclasses import dataclass, field
 from typing import Any
@@ -190,16 +195,9 @@ class MarkerParser:
     @property
     def available(self) -> bool:
         if self._available is None:
-            # Windows 上 Marker 导包成功但 parse() 会 segfault，安全起见强制禁用
-            if sys.platform == "win32":
-                self._available = False
-            else:
-                try:
-                    from marker.converters.pdf import PdfConverter  # noqa: F401
-
-                    self._available = True
-                except ImportError:
-                    self._available = False
+            # Marker 在容器内需要下载 Surya OCR 模型 (5 个文件)，
+            # 首次启动会阻塞且网络不稳定。强制走 PyMuPDF 回退管线。
+            self._available = False  # ponytail: skip Marker, use PyMuPDF fallback
         return self._available
 
     def parse(self, file_path: str) -> dict[str, Any]:
@@ -213,11 +211,15 @@ class MarkerParser:
                 "pages": list[dict],     # 兼容旧接口
             }
         """
+        import time
+
         from marker.converters.pdf import PdfConverter
         from marker.models import create_model_dict
 
+        st = time.time()
         converter = PdfConverter(artifact_dict=create_model_dict())
         rendered = converter(file_path)
+        print(f"    ⏱ Marker 解析完成 ({time.time() - st:.1f}s)")
 
         full_text = rendered.markdown
         images = rendered.images or {}
@@ -317,10 +319,7 @@ class MarkdownConverter:
             a_end = a[-1] if a else ""
             b_start = b[0] if b else ""
             # 英文单词间：a-z + a-z 或 a-z + 数字 → 加空格
-            if re.match(r"[a-zA-Z0-9]", a_end) and re.match(r"[a-zA-Z0-9(]", b_start):
-                return True
-            # 中文标点后接中文或英文 → 不加
-            return False
+            return re.match(r"[a-zA-Z0-9]", a_end) and re.match(r"[a-zA-Z0-9(]", b_start)
 
         def flush():
             if buffer:
@@ -599,7 +598,227 @@ class MarkdownConverter:
 
 
 # ═══════════════════════════════════════════════════════════════
-#  五、Section-aware SmartChunker
+#  五、数据清理管线（Marker/MD 输出 → SmartChunker 之前）
+# ═══════════════════════════════════════════════════════════════
+
+
+class CleanupPipeline:
+    """手写数据清理管线
+
+    在结构化 Markdown 产出后、SmartChunker 切分前执行。
+    保证送入检索和 LLM 的文本质量可追溯。
+
+    管线流程（6 条规则 + 1 道门禁）:
+      1. unicode_normalize  — Unicode 归一化 + 零宽字符清理
+      2. collapse_blanks    — 连续空行压缩（最多 2 行）
+      3. remove_footers     — 页码/DOI/会议页眉等噪声行过滤
+      4. normalize_headings — 松散 heading 补 # 前缀（纯大写短行 → ##）
+      5. detect_low_value   — 低价值段落标记（纯数字/URL/超短段）
+      6. quality_gate       — 汇总评分，低于阈值打降级标记
+                             + trace_log：每条规则的执行记录
+
+    面试价值：
+      - 手写规则管线 vs 黑盒模型：可控、可解释、可调试
+      - Quality gate 是生产级 RAG 的标配（防垃圾进→垃圾出）
+      - 每条规则可单独开关，方便 ablation study
+    """
+
+    RULES = [
+        "unicode_normalize",
+        "collapse_blanks",
+        "remove_footers",
+        "normalize_headings",
+        "detect_low_value",
+    ]
+
+    def __init__(self, min_quality_score: float = 0.3):
+        self.min_quality_score = min_quality_score
+
+    def run(self, text: str, metadata: dict[str, Any]) -> tuple[str, list[dict], dict]:
+        """执行清理管线
+
+        Returns:
+            (cleaned_text, trace_log, quality_report)
+            - trace_log: [{"rule": str, "passed": bool, "detail": str}, ...]
+            - quality_report: {"score": float, "passed": bool, "flags": list[str]}
+        """
+        trace: list[dict] = []
+        current = text
+
+        for rule_name in self.RULES:
+            method = getattr(self, f"_{rule_name}", None)
+            if not method:
+                trace.append({"rule": rule_name, "passed": True, "detail": "no-op"})
+                continue
+            try:
+                current, result = method(current, metadata)
+                trace.append({"rule": rule_name, **result})
+            except Exception as e:
+                trace.append({"rule": rule_name, "passed": False, "detail": f"异常: {e}"})
+
+        quality = self._quality_gate(current, trace, metadata)
+
+        return current, trace, quality
+
+    # ── 规则 1：Unicode 归一化 ─────────────────────────────────
+
+    @staticmethod
+    def _unicode_normalize(text: str, metadata: dict) -> tuple[str, dict]:
+        before = len(text)
+        # 零宽字符
+        text = re.sub(r"[​-‏﻿⁠⁡]", "", text)
+        # 连字分解
+        text = text.replace("ﬁ", "fi").replace("ﬂ", "fl").replace("ﬀ", "ff")
+        # 控制字符（保留换行）
+        chars = [c for c in text if c == "\n" or ord(c) >= 0x20 or ord(c) in (0x0A, 0x0D)]
+        text = "".join(chars)
+        removed = before - len(text)
+        return text, {
+            "passed": removed < before * 0.1,
+            "detail": f"移除 {removed} 个控制/零宽字符",
+        }  # ponytail: 10% 阈值防误杀
+
+    # ── 规则 2：空行压缩 ───────────────────────────────────────
+
+    @staticmethod
+    def _collapse_blanks(text: str, metadata: dict) -> tuple[str, dict]:
+        before = len(text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        text = re.sub(r"^\s*\n", "\n", text, flags=re.MULTILINE)
+        removed = before - len(text)
+        return text, {"passed": True, "detail": f"压缩空白，移除 {removed} 字符"}
+
+    # ── 规则 3：页脚噪声过滤 ───────────────────────────────────
+
+    @staticmethod
+    def _remove_footers(text: str, metadata: dict) -> tuple[str, dict]:
+        lines = text.split("\n")
+        kept = 0
+        removed = 0
+        cleaned: list[str] = []
+        for line in lines:
+            s = line.strip()
+            # 页码单行
+            if re.match(r"^\d+$", s) and len(s) < 6:
+                removed += 1
+                continue
+            # DOI 行
+            if re.match(r"^DOI\s*[:\s]\s*10\.\S+", s, re.IGNORECASE):
+                removed += 1
+                continue
+            # arXiv ID
+            if re.match(r"^arXiv:\d{4}\.\d+", s):
+                removed += 1
+                continue
+            # 纯 URL 行
+            if re.match(r"^https?://\S+$", s):
+                removed += 1
+                continue
+            # 版权行
+            if re.match(r"^©\s*\d{4}", s):
+                removed += 1
+                continue
+            cleaned.append(line)
+            kept += 1
+        text = "\n".join(cleaned)
+        return text, {"passed": removed < kept, "detail": f"过滤 {removed} 行噪声（保留 {kept} 行）"}
+
+    # ── 规则 4：松散标题归一化 ──────────────────────────────────
+
+    @staticmethod
+    def _normalize_headings(text: str, metadata: dict) -> tuple[str, dict]:
+        """为没有 # 前缀的章节标题行添加 ## 前缀
+
+        检测特征：独立短行、大写/数字开头、无句号结尾、不是 # 开头。
+        """
+        lines = text.split("\n")
+        changed = 0
+        for i, line in enumerate(lines):
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            if len(s) > 60 or s.endswith((".", "。", "！", "？")):
+                continue
+            # 中文章节：第X章 | X. | 一二三、 | （X）
+            if re.match(r"^(第[一二三四五六七八九十]+[章节]|（?\d+\）?[、.．])", s):
+                lines[i] = f"## {s}"
+                changed += 1
+                continue
+            # 英文章节：INTRODUCTION | 1.1 | [I-V]+\.
+            if re.match(r"^[A-Z][A-Z\s]{2,40}$", s) or re.match(r"^[ⅠⅡⅢⅣⅤ]+\.", s):
+                lines[i] = f"## {s}"
+                changed += 1
+                continue
+        text = "\n".join(lines)
+        return text, {"passed": True, "detail": f"补充 {changed} 个 heading 标记"}
+
+    # ── 规则 5：低价值段落标记 ──────────────────────────────────
+
+    @staticmethod
+    def _detect_low_value(text: str, metadata: dict) -> tuple[str, dict]:
+        """标记低价值段落但不删除（给 quality gate 用）"""
+        value_flags: list[str] = []
+        lines = text.split("\n")
+        total_lines = len([l for l in lines if l.strip()])
+        low_value = 0
+        for line in lines:
+            s = line.strip()
+            if not s:
+                continue
+            # 纯数字/符号
+            if re.match(r"^[\d\s,./\-|\\()]+$", s) and len(s) > 3:
+                low_value += 1
+                continue
+            # 超短行（<3 字符且不是 heading）
+            if len(s) < 3 and not s.startswith("#") and not s.startswith("!"):
+                low_value += 1
+                continue
+        if total_lines > 0 and low_value / total_lines > 0.3:
+            value_flags.append("high_noise_ratio")
+        metadata.setdefault("_cleanup_flags", []).extend(value_flags)
+        return text, {"passed": low_value / max(total_lines, 1) < 0.5, "detail": f"低价值行 {low_value}/{total_lines}"}
+
+    # ── 质量门禁 ────────────────────────────────────────────────
+
+    def _quality_gate(self, text: str, trace: list[dict], metadata: dict) -> dict:
+        """计算质量评分，决定是否放行
+
+        评分维度（各 0-1）：
+          - rules_pass_rate: 规则通过率
+          - content_ratio: 清理后有效内容占比
+          - heading_coverage: 文档中是否有 heading 结构
+        总分 = 加权平均（权重 4:3:3）
+        """
+        rules_pass_rate = sum(1 for t in trace if t.get("passed", False)) / max(len(trace), 1)
+
+        meaningful = len(re.sub(r"\s", "", text))
+        total = len(text) + 1
+        content_ratio = meaningful / total
+
+        has_headings = 1.0 if re.search(r"^##?\s+\S", text, re.MULTILINE) else 0.0
+
+        score = rules_pass_rate * 0.4 + content_ratio * 0.3 + has_headings * 0.3
+        passed = score >= self.min_quality_score
+
+        flags = list(metadata.get("_cleanup_flags", []))
+        if not passed:
+            flags.append("quality_gate_blocked")
+
+        report = {
+            "score": round(score, 3),
+            "passed": passed,
+            "flags": flags,
+            "detail": {
+                "rules_pass_rate": round(rules_pass_rate, 3),
+                "content_ratio": round(content_ratio, 3),
+                "heading_coverage": has_headings,
+            },
+        }
+        return report
+
+
+# ═══════════════════════════════════════════════════════════════
+#  六、Section-aware SmartChunker
 # ═══════════════════════════════════════════════════════════════
 
 
@@ -967,8 +1186,8 @@ class SmartChunker:
 def process_document(file_path: str) -> dict[str, Any]:
     """文档处理管线入口
 
-    主路径：Marker PDF → 结构化 Markdown → Smart Chunking
-    回退路径：PyMuPDF → OCR 检测 → MarkdownConverter → Smart Chunking
+    主路径：Marker PDF → 结构化 Markdown → CleanupPipeline → Smart Chunking
+    回退路径：PyMuPDF → OCR 检测 → MarkdownConverter → CleanupPipeline → Smart Chunking
 
     Args:
         file_path: PDF/MD/TXT 文件路径
@@ -1049,7 +1268,14 @@ def process_document(file_path: str) -> dict[str, Any]:
         if not markdown_text.strip() and markdown_text_input.strip():
             markdown_text = markdown_text_input
 
-    # 5. Smart Chunking——按文件大小动态缩放阈值
+    # 5. 数据清理管线（Markdown → CleanupPipeline → SmartChunker）
+    cleanup = CleanupPipeline()
+    markdown_text, cleanup_trace, quality = cleanup.run(markdown_text, metadata)
+    if not quality["passed"]:
+        print(f"  ⚠️ 质量门禁未通过 (score={quality['score']:.2f}), flags={quality['flags']}")
+    metadata["_cleanup"] = {"trace": cleanup_trace, "quality": quality}
+
+    # 6. Smart Chunking——按文件大小动态缩放阈值
     chunker = SmartChunker()
     is_en = metadata.get("is_english", False)
 
@@ -1080,13 +1306,13 @@ def process_document(file_path: str) -> dict[str, Any]:
 
     small_chunks, parent_chunks = chunker.chunk(markdown_text, metadata)
 
-    # 6. 每篇文档最多 MAX_CHUNKS_PER_DOC 个 small chunk
-    MAX_CHUNKS_PER_DOC = 200
-    if len(small_chunks) > MAX_CHUNKS_PER_DOC:
+    # 6. 每篇文档最多 max_chunks_per_doc 个 small chunk
+    max_chunks_per_doc = 200
+    if len(small_chunks) > max_chunks_per_doc:
         print(
-            f"  ⚠️ Small chunks ({len(small_chunks)}) 超过上限 ({MAX_CHUNKS_PER_DOC})，截断保留前 {MAX_CHUNKS_PER_DOC} 个"
+            f"  ⚠️ Small chunks ({len(small_chunks)}) 超过上限 ({max_chunks_per_doc})，截断保留前 {max_chunks_per_doc} 个"
         )
-        small_chunks = small_chunks[:MAX_CHUNKS_PER_DOC]
+        small_chunks = small_chunks[:max_chunks_per_doc]
 
     # 7. 汇总统计
     print(f"  📊 元数据: 标题={metadata.get('title', '')[:50]}...")

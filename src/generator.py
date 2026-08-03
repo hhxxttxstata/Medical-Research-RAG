@@ -10,7 +10,6 @@ import random
 import re
 import sys
 import time
-from dataclasses import dataclass, field
 from typing import Any
 
 from dotenv import load_dotenv
@@ -225,6 +224,7 @@ def build_rag_prompt(
     retrieved_chunks: list[dict[str, Any]],
     relevance: dict[str, Any] | None = None,
     use_prefix_cache: bool = True,
+    diagnosis_result: dict | None = None,
 ) -> tuple[list[dict[str, str]], dict[str, Any], dict[str, Any]]:
     """
     构建 RAG Prompt（Prompt Caching 优化版）
@@ -278,11 +278,38 @@ def build_rag_prompt(
 
     context = "\n".join(context_parts)
 
+    # ── 注入 CTPA 诊断结果（当用户上传了影像时） ──
+    diagnosis_block = ""
+    if diagnosis_result and diagnosis_result.get("success"):
+        prob = diagnosis_result["probability"]
+        pred = "阳性" if diagnosis_result["prediction"] else "阴性"
+        risk_level = "高风险" if prob >= 0.9 else "中风险" if prob >= 0.7 else "低风险" if prob >= 0.5 else "阴性"
+        num_slabs = diagnosis_result.get("num_slabs", 0)
+        inference_time = diagnosis_result.get("inference_time", 0)
+
+        diagnosis_block = (
+            "\n## CTPA 影像辅助诊断结果\n"
+            f"- 肺栓塞概率: {prob:.2%}\n"
+            f"- 分类: {pred}（{risk_level}）\n"
+            f"- 分析切片数: {num_slabs}\n"
+            f"- 模型推理耗时: {inference_time}s\n"
+        )
+        attn = diagnosis_result.get("attention_weights", [])
+        if attn:
+            max_attn = max(attn)
+            diagnosis_block += f"- 最大注意力权重: {max_attn:.4f}\n"
+
+        # 如果存在可视化 base64，不塞进 prompt（太长），只记录
+        if diagnosis_result.get("visualization"):
+            diagnosis_block += "- 可视化图像已独立返回，请参考可视化数据\n"
+
+        diagnosis_block += "\n【注意】以上结果来自 AI 辅助诊断模型，仅供参考，需结合临床判断。\n"
+
     # 稳定前缀：跨请求不变（可命中 Prompt Cache）
     stable_prefix = "请根据以下参考文档回答用户问题。\n## 参考文档\n"
 
     # 动态后缀：随查询变化
-    dynamic_suffix = f"{context if context else '（无参考文档）'}\n\n## 用户问题\n{query}\n\n## 回答\n"
+    dynamic_suffix = f"{context if context else '（无参考文档）'}\n{diagnosis_block}\n## 用户问题\n{query}\n\n## 回答\n"
 
     user_content = stable_prefix + dynamic_suffix if use_prefix_cache else f"{stable_prefix}{dynamic_suffix}"
 
@@ -371,23 +398,6 @@ def validate_citations(answer: str, source_map: dict[str, Any]) -> dict[str, Any
 # ──────────────────────────────────────────────
 #  四、生成器实现
 # ──────────────────────────────────────────────
-
-
-@dataclass
-class ChatWithToolsResult:
-    """带工具调用的聊天响应
-
-    content:        LLM 的文本回复（无 tool_calls 时的回答）
-    tool_calls:     结构化工具调用列表 [{id, type, function: {name, arguments}}]
-    finish_reason:  终止原因：stop | tool_calls | length
-    is_degraded:    True 表示该结果是降级而非 LLM 原始响应
-                    （Function Calling 失败 → 纯文本兜底）
-    """
-
-    content: str | None = None
-    tool_calls: list[dict[str, Any]] = field(default_factory=list)
-    finish_reason: str = "stop"
-    is_degraded: bool = False
 
 
 class LLMGenerator:
@@ -723,175 +733,6 @@ class LLMGenerator:
 
         return result
 
-    def chat_with_tools(
-        self,
-        messages: list[dict[str, str]],
-        tools: list[dict[str, Any]] | None = None,
-        tool_choice: str | None = None,
-        temperature: float | None = None,
-        max_tokens: int = 2048,
-        parallel_tool_calls: bool = True,
-    ) -> ChatWithToolsResult:
-        """带原生 Function Calling 支持的聊天接口
-
-        当 tools 参数提供且后端 API 支持时，返回结构化的 tool_calls。
-        否则降级到纯文本聊天。
-
-        Args:
-            messages:          对话消息列表
-            tools:             OpenAI 格式的工具定义列表
-            tool_choice:       "auto" | "none" | "required"
-            temperature:       温度（可选，覆盖默认值）
-            max_tokens:        最大 token 数
-            parallel_tool_calls: 是否允许并行工具调用（默认 True）
-
-        Returns:
-            ChatWithToolsResult: 含 content 和/或 tool_calls
-        """
-        start = time.monotonic()
-        has_valid_key = self._is_valid_api_key(self.api_key)
-
-        # ── 有 API Key → OpenAI/DeepSeek 兼容路径 ──
-        if has_valid_key and tools:
-            try:
-                result = self._call_openai_chat_with_tools(
-                    messages=messages,
-                    tools=tools,
-                    tool_choice=tool_choice or "auto",
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    parallel_tool_calls=parallel_tool_calls,
-                )
-                return result
-            except Exception:
-                pass
-
-        # ── 无 API Key（Ollama 路径） ──
-        if not has_valid_key and tools:
-            try:
-                result = self._call_ollama_chat_with_tools(
-                    messages=messages,
-                    tools=tools,
-                    temperature=temperature,
-                )
-                return result
-            except Exception:
-                pass
-
-        # ── 降级到纯文本 ──
-        text = self.chat(messages, temperature=temperature, max_tokens=max_tokens)
-        return ChatWithToolsResult(content=text, tool_calls=[], finish_reason="stop", is_degraded=True)
-
-    def _call_openai_chat_with_tools(
-        self,
-        messages: list[dict[str, str]],
-        tools: list[dict[str, Any]],
-        tool_choice: str = "auto",
-        temperature: float | None = None,
-        max_tokens: int = 2048,
-        parallel_tool_calls: bool = True,
-    ) -> ChatWithToolsResult:
-        """调用 OpenAI 兼容 API 并传入 tools 参数
-
-        返回结构化的 ChatWithToolsResult，包含 content 和/或 tool_calls。
-        """
-        from openai import OpenAI
-
-        client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=30)
-
-        kwargs: dict[str, Any] = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature if temperature is not None else self.temperature,
-            "max_tokens": max_tokens,
-            "timeout": 30,
-        }
-        if tools:
-            kwargs["tools"] = tools
-            kwargs["tool_choice"] = tool_choice
-            kwargs["parallel_tool_calls"] = parallel_tool_calls
-
-        response = client.chat.completions.create(**kwargs)
-        choice = response.choices[0]
-        msg = choice.message
-
-        # 提取 tool_calls（如果有）
-        tool_calls_data: list[dict[str, Any]] = []
-        if msg.tool_calls:
-            for tc in msg.tool_calls:
-                tool_calls_data.append(
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                )
-
-        return ChatWithToolsResult(
-            content=msg.content,
-            tool_calls=tool_calls_data,
-            finish_reason=choice.finish_reason or "stop",
-        )
-
-    def _call_ollama_chat_with_tools(
-        self,
-        messages: list[dict[str, str]],
-        tools: list[dict[str, Any]],
-        temperature: float | None = None,
-    ) -> ChatWithToolsResult:
-        """调用 Ollama 的 chat API 并传入 tools 参数
-
-        Ollama 0.3+ 开始支持 tools（实验性），失败时降级到纯文本。
-        """
-        import requests
-
-        try:
-            payload: dict[str, Any] = {
-                "model": os.getenv("OLLAMA_MODEL", "qwen2.5:7b"),
-                "messages": messages,
-                "stream": False,
-                "options": {
-                    "temperature": temperature if temperature is not None else self.temperature,
-                },
-            }
-            if tools:
-                payload["tools"] = tools
-
-            response = requests.post(
-                url=f"{os.getenv('OLLAMA_URL', 'http://localhost:11434')}/api/chat",
-                json=payload,
-                timeout=60,
-            )
-            response.raise_for_status()
-            data = response.json()
-            msg = data.get("message", {})
-
-            tool_calls_data: list[dict[str, Any]] = []
-            for tc in msg.get("tool_calls", []):
-                tool_calls_data.append(
-                    {
-                        "id": tc.get("id", "call_ollama"),
-                        "type": "function",
-                        "function": {
-                            "name": tc["function"]["name"],
-                            "arguments": json.dumps(tc["function"]["arguments"]),
-                        },
-                    }
-                )
-
-            return ChatWithToolsResult(
-                content=msg.get("content"),
-                tool_calls=tool_calls_data,
-                finish_reason=data.get("done_reason", "stop"),
-            )
-        except Exception:
-            # Fallback: text-only
-            text = self._call_ollama_chat(messages, temperature)
-            return ChatWithToolsResult(content=text, tool_calls=[], finish_reason="stop")
-
     def _call_openai_chat(
         self,
         messages: list[dict[str, str]],
@@ -902,13 +743,17 @@ class LLMGenerator:
         from openai import OpenAI
 
         client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=30)
-        response = client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=temperature if temperature is not None else self.temperature,
-            max_tokens=max_tokens,
-            timeout=30,
-        )
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature if temperature is not None else self.temperature,
+            "max_tokens": max_tokens,
+            "timeout": 30,
+        }
+        # DeepSeek 非思考模式保险：禁用 reasoning 输出（deepseek-chat 天然非思考，此参数仅兼容 v4 系列）
+        if "deepseek" in self.base_url.lower():
+            kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+        response = client.chat.completions.create(**kwargs)
         return response.choices[0].message.content
 
     def _call_openai_chat_stream(
@@ -921,14 +766,17 @@ class LLMGenerator:
         from openai import OpenAI
 
         client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=30)
-        response = client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=temperature if temperature is not None else self.temperature,
-            max_tokens=max_tokens,
-            stream=True,
-            timeout=30,
-        )
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature if temperature is not None else self.temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+            "timeout": 30,
+        }
+        if "deepseek" in self.base_url.lower():
+            kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+        response = client.chat.completions.create(**kwargs)
         for chunk in response:
             delta = chunk.choices[0].delta if chunk.choices else None
             if delta and delta.content:

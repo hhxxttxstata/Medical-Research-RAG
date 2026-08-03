@@ -298,23 +298,24 @@ class TestReranker:
 
     def test_rerank_sorts_by_score(self):
         """reranker 应高分在前"""
-        gen = MockGenerator(
-            responses={
-                "__default__": json.dumps(
-                    [
-                        {"relevance": 3, "reason": "低"},
-                        {"relevance": 9, "reason": "高"},
-                        {"relevance": 6, "reason": "中"},
-                    ]
-                ),
-            }
-        )
+
+        # Cross-encoder reranker 路径（LLM-as-reranker 已被 CrossEncoderReranker 替代）
+        class MockReranker:
+            model_ready = True
+
+            def rerank(self, query, chunks, top_k):
+                for i, c in enumerate(chunks):
+                    c["_rerank_score"] = [3.0, 9.0, 6.0][i]
+                chunks.sort(key=lambda x: x["_rerank_score"], reverse=True)
+                return chunks[:top_k]
+
         hr = Retriever(
             vector_store=MockVectorStore(),
             embedding_provider=MockEmbeddingProvider(),
-            generator=gen,
+            generator=MockGenerator(),
             enable_rewrite=False,
             enable_reranker=True,
+            reranker=MockReranker(),
         )
         chunks = make_chunks(3)
         reranked = hr._rerank("测试", chunks, top_k=3)
