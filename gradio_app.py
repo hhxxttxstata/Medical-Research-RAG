@@ -6,8 +6,8 @@ import json
 import os
 import sys
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -49,10 +49,14 @@ def _multipart_post(url: str, file_path: str, filename: str) -> dict:
         file_bytes = f.read()
 
     body = (
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
-        f"Content-Type: application/octet-stream\r\n\r\n"
-    ).encode("utf-8") + file_bytes + f"\r\n--{boundary}--\r\n".encode()
+        (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            f"Content-Type: application/octet-stream\r\n\r\n"
+        ).encode()
+        + file_bytes
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
 
     req = urllib.request.Request(url, data=body, method="POST")
     req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
@@ -91,7 +95,7 @@ def _build_diagnosis_markdown(result: dict, filename: str) -> str:
         f"| 📊 肺栓塞概率 | **{prob:.4f}** ({prob * 100:.2f}%) |",
         f"| ⏱️  耗时 | {result.get('total_time', 0):.3f}s |",
         "",
-        f"> ⚠️ **免责声明:** AI 辅助诊断建议，仅供参考。",
+        "> ⚠️ **免责声明:** AI 辅助诊断建议，仅供参考。",
     ]
     return "\n".join(lines)
 
