@@ -34,7 +34,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from augmentations import get_overfit_transforms, get_train_transforms, get_val_transforms
 from config_attention import Config
 from get_slice_key import KeySliceLabeler
-
 from models.resnet25d_attention import resnet25d_attention
 
 

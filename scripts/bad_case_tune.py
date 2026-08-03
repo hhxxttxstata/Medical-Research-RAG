@@ -197,9 +197,10 @@ def main():
         print(f"\n{'─' * 60}")
         print("  🔄 Re-evaluate mode (需 API 运行)")
         print(f"{'─' * 60}")
+        from src.vector_store import create_vector_store
+
         from src.embeddings import get_embedding_provider
         from src.rag_pipeline import RAGPipeline
-        from src.vector_store import create_vector_store
 
         # 轻量初始化（只加载检索相关组件，不启动 FastAPI）
         emb = get_embedding_provider("local")
