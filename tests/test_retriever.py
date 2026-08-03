@@ -9,10 +9,10 @@
 from unittest.mock import MagicMock
 
 import pytest
+from src.milvus_store import MilvusStore
 
 from src.embeddings import EmbeddingProvider
 from src.retriever import Retriever
-from src.vector_store import VectorStore
 
 
 @pytest.fixture
@@ -26,7 +26,7 @@ def mock_embedding():
 @pytest.fixture
 def mock_vector_store():
     """Mock VectorStore（仅 similarity_search）"""
-    mock = MagicMock(spec=VectorStore)
+    mock = MagicMock(spec=MilvusStore)
     mock.similarity_search.return_value = [
         {
             "id": "chunk_1",
@@ -42,7 +42,7 @@ def mock_vector_store():
 @pytest.fixture
 def mock_hybrid_store():
     """Mock VectorStore（含 get_all_documents 支持，用于 HybridRetriever）"""
-    mock = MagicMock(spec=VectorStore)
+    mock = MagicMock(spec=MilvusStore)
     mock.similarity_search.return_value = [
         {
             "id": "chunk_1",
@@ -100,7 +100,7 @@ class TestRetriever:
         assert kwargs["prefix"] == "query: "
 
     def test_retrieve_empty_results(self, mock_embedding):
-        mock_store = MagicMock(spec=VectorStore)
+        mock_store = MagicMock(spec=MilvusStore)
         mock_store.similarity_search.return_value = []
         retriever = Retriever(vector_store=mock_store, embedding_provider=mock_embedding, top_k=5)
         results = retriever.retrieve("不存在的内容")
@@ -118,7 +118,7 @@ class TestFormatResults:
         assert "metadata" in results[0]
 
     def test_format_results_empty(self, mock_embedding):
-        mock_store = MagicMock(spec=VectorStore)
+        mock_store = MagicMock(spec=MilvusStore)
         mock_store.similarity_search.return_value = []
         retriever = Retriever(vector_store=mock_store, embedding_provider=mock_embedding, top_k=5)
         results = retriever.retrieve("不存在的内容")
@@ -150,7 +150,7 @@ class TestHybridRetriever:
 
     def test_hybrid_fallback_no_bm25(self, mock_embedding):
         """BM25 索引不可用时回退到纯向量检索"""
-        mock_store = MagicMock(spec=VectorStore)
+        mock_store = MagicMock(spec=MilvusStore)
         mock_store.similarity_search.return_value = [
             {"id": "c1", "text": "测试", "metadata": {}, "score": 0.5},
         ]
