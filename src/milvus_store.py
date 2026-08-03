@@ -55,15 +55,6 @@ class MilvusStore:
         use_lite: bool = False,
         lite_db_path: str = "milvus_db",
     ):
-        """
-        Args:
-            collection_name: Milvus 集合名称
-            dim: 向量维度（需与实际模型输出一致）
-            host: Milvus 服务地址（Standalone 模式）
-            port: Milvus 服务端口（Standalone 模式）
-            use_lite: True = 使用 Milvus Lite（嵌入式，无需 Docker）
-            lite_db_path: Milvus Lite 数据持久化目录
-        """
         self.collection_name = collection_name
         self.dim = dim
         self.host = host
@@ -85,7 +76,6 @@ class MilvusStore:
         self._ensure_collection()
 
     def _ensure_imports(self):
-        """延迟导入 pymilvus 模块"""
         global MilvusClient, DataType
         from pymilvus import DataType, MilvusClient
 
@@ -94,7 +84,6 @@ class MilvusStore:
         self._use_lite = self.use_lite
 
     def _do_connect(self):
-        """建立与 Milvus 的连接"""
         last_error = None
         for attempt in range(_MAX_RETRIES):
             try:
@@ -116,11 +105,9 @@ class MilvusStore:
         self._connected = False
 
     def _ensure_collection(self):
-        """确保集合存在，不存在则创建"""
         if not self._connected:
             return
         try:
-            # 检查集合是否存在
             collections = self._client.list_collections()
             if self.collection_name in collections:
                 self._collection = self.collection_name
@@ -130,7 +117,6 @@ class MilvusStore:
         except Exception:
             pass
 
-        # 创建集合
         try:
             schema = self._client.create_schema(
                 auto_id=True,
@@ -161,19 +147,18 @@ class MilvusStore:
             print(f"  ⚠️ 创建 Milvus 集合失败: {e}")
             self._collection = None
 
+    def _ensure_loaded(self):
+        """确保集合处于 loaded 状态（Milvus 释放后需重新加载才能检索）"""
+        if not self._connected or self._collection is None:
+            return
+        try:
+            self._client.load_collection(self.collection_name)
+        except Exception:
+            pass
+
     # ── 数据写入 ────────────────────────────────────
 
-    def add_chunks(
-        self,
-        chunks: list[dict[str, Any]],
-        embeddings: list[list[float]],
-    ):
-        """批量写入 Chunk 向量
-
-        Args:
-            chunks: [{"chunk_id": str, "text": str, "metadata": dict}, ...]
-            embeddings: 与 chunks 等长的向量列表
-        """
+    def add_chunks(self, chunks: list[dict[str, Any]], embeddings: list[list[float]]):
         self._connect()
         if not self._connected or self._collection is None:
             print("  ⚠️ Milvus 不可用，跳过向量写入")
@@ -205,8 +190,7 @@ class MilvusStore:
                 print(f"  ⚠️ Milvus 批量插入失败 (batch {i}): {e}")
 
         if inserted > 0:
-            # 写入后刷新索引（Windows Milvus Lite 有 os.rename 竞态，跳过）
-            if not sys.platform == "win32":
+            if sys.platform != "win32":
                 try:
                     self._client.flush(self.collection_name)
                 except Exception:
@@ -221,19 +205,11 @@ class MilvusStore:
         top_k: int = 5,
         where: dict | None = None,
     ) -> list[dict[str, Any]]:
-        """检索最相似的 Chunk
-
-        Args:
-            query_embedding: 查询向量
-            top_k: 返回 top-K 结果
-            where: Milvus 标量过滤表达式（如 {"filename": "doc.pdf"}）
-
-        Returns:
-            [{"id": str, "text": str, "metadata": dict, "score": float}, ...]
-        """
         self._connect()
         if not self._connected or self._collection is None:
             return []
+
+        self._ensure_loaded()
 
         try:
             search_params = {
@@ -278,10 +254,10 @@ class MilvusStore:
     # ── 管理方法 ────────────────────────────────────
 
     def count(self) -> int:
-        """获取集合中的向量数量"""
         self._connect()
         if not self._connected or self._collection is None:
             return 0
+        self._ensure_loaded()
         try:
             stats = self._client.get_collection_stats(self.collection_name)
             return stats.get("row_count", 0)
@@ -289,7 +265,6 @@ class MilvusStore:
             return 0
 
     def delete_collection(self, name: str | None = None):
-        """删除集合"""
         target = name or self.collection_name
         self._connect()
         if not self._connected:
@@ -299,15 +274,16 @@ class MilvusStore:
             if target == self.collection_name:
                 self._collection = None
             print(f"  🗑️ 已删除 Milvus 集合 '{target}'")
-            self._connected = False  # 下次 _connect() 重新创建集合
+            self._connected = False
         except Exception as e:
             print(f"  ⚠️ 删除 Milvus 集合失败: {e}")
 
     def get_all_documents(self) -> list[dict[str, Any]]:
-        """获取集合中所有文档（不含 embedding，用于 BM25 建索引）"""
         self._connect()
         if not self._connected or self._collection is None:
             return []
+
+        self._ensure_loaded()
 
         try:
             results = self._client.query(
@@ -336,7 +312,6 @@ class MilvusStore:
             return []
 
     def get_collection(self, name: str):
-        """按名称检查集合是否存在（兼容接口）"""
         self._connect()
         if not self._connected:
             return None
@@ -349,7 +324,6 @@ class MilvusStore:
         return None
 
     def list_collections(self) -> list:
-        """列出所有集合"""
         self._connect()
         if not self._connected:
             return []
@@ -359,7 +333,6 @@ class MilvusStore:
             return []
 
     def close(self):
-        """释放资源"""
         if self._connected and hasattr(self, "_client"):
             try:
                 self._client.close()

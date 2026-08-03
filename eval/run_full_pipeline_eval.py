@@ -2,6 +2,7 @@
 完整 RAG Pipeline 评估（含 LLM 生成 + 拒答逻辑）
 用法: PYTHONIOENCODING=utf-8 python eval/run_full_pipeline_eval.py
 """
+
 import json
 import sys
 import time
@@ -42,51 +43,52 @@ for i, q in enumerate(questions):
     try:
         result = pipeline.query(q["question"], top_k=10)
     except Exception as e:
-        print(f"  ❌ [{i+1}/{len(questions)}] 失败: {e}")
+        print(f"  ❌ [{i + 1}/{len(questions)}] 失败: {e}")
         continue
     elapsed = time.time() - t0
 
     expected_doc = q.get("expected_doc", "")
     sources = result.get("sources", [])
-    expected_hit = bool(expected_doc and any(
-        expected_doc in s.get("metadata", {}).get("filename", "") for s in sources
-    )) if expected_doc else None
+    expected_hit = (
+        bool(expected_doc and any(expected_doc in s.get("metadata", {}).get("filename", "") for s in sources))
+        if expected_doc
+        else None
+    )
 
     cat = q.get("category", "unknown")
     diff = q.get("difficulty", "unknown")
     is_refusal = result.get("is_refusal", False)
-    correct_refusal = (
-        is_refusal if cat == "out_of_knowledge"
-        else not is_refusal
-    )
+    correct_refusal = is_refusal if cat == "out_of_knowledge" else not is_refusal
 
     # 检查回答中是否包含拒答信号
     answer = result.get("answer", "")
     refusal_phrases = ["无法回答", "不涉及", "不在知识库", "超出", "I cannot", "I don't have", "拒答", "out of domain"]
     is_refusal_in_answer = any(p in answer for p in refusal_phrases)
 
-    records.append({
-        "question": q["question"],
-        "category": cat,
-        "difficulty": diff,
-        "expected_doc": expected_doc,
-        "expected_hit": expected_hit,
-        "num_retrieved": len(sources),
-        "top_score": sources[0].get("score", 0) if sources else 0,
-        "time_seconds": round(elapsed, 2),
-        "is_refusal": is_refusal,
-        "correct_refusal": correct_refusal,
-        "is_refusal_in_answer": is_refusal_in_answer,
-        "answer_preview": answer[:120],
-        "sources": sources,
-    })
+    records.append(
+        {
+            "question": q["question"],
+            "category": cat,
+            "difficulty": diff,
+            "expected_doc": expected_doc,
+            "expected_hit": expected_hit,
+            "num_retrieved": len(sources),
+            "top_score": sources[0].get("score", 0) if sources else 0,
+            "time_seconds": round(elapsed, 2),
+            "is_refusal": is_refusal,
+            "correct_refusal": correct_refusal,
+            "is_refusal_in_answer": is_refusal_in_answer,
+            "answer_preview": answer[:120],
+            "sources": sources,
+        }
+    )
 
     icon = "✅" if expected_hit else ("  " if expected_doc is None else "❌")
     print(f"  {icon} [{cat[:4]}/{diff[:4]}] {q['question'][:40]:<40s} {elapsed:.1f}s")
 
 metrics = compute_all_metrics(records)
 print_metrics_report(metrics)
-print(f"\n⏱ 总耗时: {time.time()-t0_tot:.0f}s\n")
+print(f"\n⏱ 总耗时: {time.time() - t0_tot:.0f}s\n")
 
 report = {
     "timestamp": time.strftime("%Y%m%d_%H%M%S"),

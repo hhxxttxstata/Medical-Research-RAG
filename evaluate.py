@@ -30,9 +30,9 @@ print("\n" + "=" * 70)
 print("  📊 阶段 1：系统检索质量评测" + (" (跳过重索引)" if SKIP_REINDEX else ""))
 print("=" * 70)
 
-from eval.metrics import compute_all_metrics, print_metrics_report
-from eval.test_questions import get_test_questions, print_question_summary
-from src.rag_pipeline import RAGPipeline
+from eval.metrics import compute_all_metrics, print_metrics_report  # noqa: E402
+from eval.test_questions import get_test_questions, print_question_summary  # noqa: E402
+from src.rag_pipeline import RAGPipeline  # noqa: E402
 
 questions = get_test_questions()
 print_question_summary(questions)
@@ -46,10 +46,7 @@ pipeline = RAGPipeline(
     vector_backend="milvus",
 )
 
-if not SKIP_REINDEX:
-    count = pipeline.initialize_knowledge_base(force_reindex=True)
-else:
-    count = pipeline.vector_store.count()
+count = pipeline.initialize_knowledge_base(force_reindex=True) if not SKIP_REINDEX else pipeline.vector_store.count()
 
 if count == 0:
     print("❌ 知识库为空，退出")
@@ -117,7 +114,7 @@ print(f"  ⏱  总耗时: {elapsed:.1f}s  ({(elapsed / len(questions)):.1f}s/题
 print("=" * 70)
 print("  🔍 阶段 2：Bad Case 诊断")
 print("=" * 70)
-from scripts.bad_case_review import find_bad_cases, print_bad_case_report
+from scripts.bad_case_review import find_bad_cases, print_bad_case_report  # noqa: E402
 
 bad_cases = find_bad_cases(records)
 print_bad_case_report(bad_cases)

@@ -16,7 +16,7 @@ class TestRAGPipeline:
     """RAG 管道测试"""
 
     @patch("src.rag_pipeline.get_embedding_provider")
-    @patch("src.rag_pipeline.VectorStore")
+    @patch("src.rag_pipeline.MilvusStore")
     def test_init_default_params(self, mock_vectorstore, mock_embedding):
         """默认参数初始化后各组件不应为 None"""
         mock_embedding.return_value = MagicMock()
@@ -26,7 +26,9 @@ class TestRAGPipeline:
 
         pipeline = RAGPipeline(
             data_dir="/tmp/data",
-            persist_dir="/tmp/chroma",
+            milvus_host="localhost",
+            milvus_port="19530",
+            milvus_lite=True,
             top_k=5,
         )
         assert pipeline is not None
@@ -35,7 +37,7 @@ class TestRAGPipeline:
         assert "tmp" in pipeline.data_dir and "data" in pipeline.data_dir
 
     @patch("src.rag_pipeline.get_embedding_provider")
-    @patch("src.rag_pipeline.VectorStore")
+    @patch("src.rag_pipeline.MilvusStore")
     @patch("src.rag_pipeline.create_generator")
     def test_query_empty_knowledge_base(self, mock_create_gen, mock_vectorstore, mock_embedding):
         """知识库为空时查询不应崩溃，应返回兜底回答"""
@@ -52,7 +54,9 @@ class TestRAGPipeline:
 
         pipeline = RAGPipeline(
             data_dir="/tmp/data",
-            persist_dir="/tmp/chroma",
+            milvus_host="localhost",
+            milvus_port="19530",
+            milvus_lite=True,
         )
 
         # 执行查询（不崩溃）
@@ -62,7 +66,7 @@ class TestRAGPipeline:
         assert "time" in result
 
     @patch("src.rag_pipeline.get_embedding_provider")
-    @patch("src.rag_pipeline.VectorStore")
+    @patch("src.rag_pipeline.MilvusStore")
     def test_initialize_knowledge_base_empty_data_dir(self, mock_vectorstore, mock_embedding):
         """数据目录空时初始化不崩溃"""
         mock_embedding.return_value = MagicMock()
@@ -72,14 +76,16 @@ class TestRAGPipeline:
 
         pipeline = RAGPipeline(
             data_dir="/tmp/empty_dir",
-            persist_dir="/tmp/chroma",
+            milvus_host="localhost",
+            milvus_port="19530",
+            milvus_lite=True,
         )
 
         # 不调用真实文件加载，只测不崩溃
         assert pipeline is not None
 
     @patch("src.rag_pipeline.get_embedding_provider")
-    @patch("src.rag_pipeline.VectorStore")
+    @patch("src.rag_pipeline.MilvusStore")
     def test_query_result_structure(self, mock_vectorstore, mock_embedding):
         """query 返回值应包含所有必要字段"""
         mock_embedding.return_value = MagicMock()
@@ -90,7 +96,9 @@ class TestRAGPipeline:
         # Mock retriever.retrieve 返回模拟数据
         pipeline = RAGPipeline(
             data_dir="/tmp/data",
-            persist_dir="/tmp/chroma",
+            milvus_host="localhost",
+            milvus_port="19530",
+            milvus_lite=True,
         )
 
         result = pipeline.query("肺栓塞")

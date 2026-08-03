@@ -54,6 +54,7 @@ class RAGPipeline:
         milvus_host: str = "localhost",
         milvus_port: str = "19530",
         milvus_lite: bool = False,
+        diagnosis_model=None,  # CTPADiagnosisModel | None
     ):
         self.data_dir = os.path.abspath(data_dir)
         self.top_k = top_k
@@ -64,6 +65,7 @@ class RAGPipeline:
         self._cache = cache_manager
         self._bm25_backend = bm25_backend
         self._bm25_index_dir = bm25_index_dir
+        self.diagnosis_model = diagnosis_model
 
         collection_name = f"rag_docs_c{chunk_min_chars}_{chunk_max_chars}"
         self.embedding_provider = get_embedding_provider(embedding_provider, embedding_model)
@@ -208,13 +210,14 @@ class RAGPipeline:
             "cache_hit": cache_hit,
         }
 
-    def query(self, question: str, top_k: int | None = None) -> dict[str, Any]:
+    def query(self, question: str, top_k: int | None = None, ctpa_file: str | None = None) -> dict[str, Any]:
         start_time = time.time()
         k = top_k or self.top_k
         error = None
         is_refusal = False
         retrieved_chunks: list[dict[str, Any]] = []
         cache_hit = "none"
+        diagnosis_result = None
 
         # 1. Answer Cache
         if self._cache:
@@ -232,6 +235,17 @@ class RAGPipeline:
         print(f"\n🔍 查询: {question}")
         print(f"{'=' * 60}\n")
 
+        # 1b. CTPA 诊断（可选）
+        if ctpa_file and self.diagnosis_model and self.diagnosis_model.is_loaded:
+            print(f"  🩺 加载 CTPA 影像: {ctpa_file}")
+            diagnosis_result = self.diagnosis_model.predict(ctpa_file)
+            if diagnosis_result.get("success"):
+                prob = diagnosis_result["probability"]
+                pred = "阳性" if diagnosis_result["prediction"] else "阴性"
+                print(f"  ✅ 诊断完成: PE 概率={prob:.4f} ({pred})")
+            else:
+                print(f"  ⚠️ 诊断失败: {diagnosis_result.get('error')}")
+
         try:
             # 2. 共享检索逻辑
             prep = self._retrieve_and_prepare(question, k)
@@ -242,7 +256,7 @@ class RAGPipeline:
 
             # 生成结构化回答
             print("🤖 生成回答...")
-            prompt_data = build_rag_prompt(question, retrieved_chunks, relevance)
+            prompt_data = build_rag_prompt(question, retrieved_chunks, relevance, diagnosis_result=diagnosis_result)
             gen = self.generator.generate_structured(prompt_data, self_reflect=True)
             answer = gen["raw"]
             structured = gen["structured"]
@@ -263,6 +277,20 @@ class RAGPipeline:
 
         elapsed = time.time() - start_time
 
+        # OpenTelemetry trace context
+        _trace_id = ""
+        _span_id = ""
+        try:
+            from opentelemetry import trace as otel_trace
+
+            span = otel_trace.get_current_span()
+            ctx = span.get_span_context() if span else None
+            if ctx:
+                _trace_id = hex(ctx.trace_id)[2:]
+                _span_id = hex(ctx.span_id)[2:]
+        except Exception:
+            pass
+
         self.logger.log_query(
             question=question,
             retrieved_chunks=retrieved_chunks,
@@ -274,6 +302,8 @@ class RAGPipeline:
             chunk_min_chars=self.chunk_min_chars,
             chunk_max_chars=self.chunk_max_chars,
             relevance=relevance,
+            trace_id=_trace_id,
+            span_id=_span_id,
         )
 
         return {
@@ -287,6 +317,7 @@ class RAGPipeline:
             "relevance": relevance,
             "citation_validation": citation_result,
             "cache_hit": cache_hit,
+            "diagnosis_result": diagnosis_result,
         }
 
     def query_stream(self, question: str, top_k: int | None = None):

@@ -9,9 +9,9 @@
 from unittest.mock import MagicMock
 
 import pytest
-from src.milvus_store import MilvusStore
 
 from src.embeddings import EmbeddingProvider
+from src.milvus_store import MilvusStore
 from src.retriever import Retriever
 
 

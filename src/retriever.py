@@ -11,7 +11,6 @@
 
 import json
 import re
-import time
 from typing import Any
 
 from .embeddings import EmbeddingProvider
@@ -173,17 +172,12 @@ class Retriever:
                 r.pop("_retriever", None)
             return results
 
-        start = time.monotonic()
-
         # 记录原始 query，供后续区分改写 query
         self._original_query = query
 
         # ── 阶段 0: Rewrite Gate ──
         needs_rewrite = self._can_rewrite() and self._rewrite_gate(query)
-        if needs_rewrite:
-            search_queries = self._rewrite_query(query)
-        else:
-            search_queries = [query]
+        search_queries = self._rewrite_query(query) if needs_rewrite else [query]
 
         # ── 阶段 1: 混合检索 ──
         all_results = []
@@ -199,17 +193,12 @@ class Retriever:
 
         # ── 阶段 2: Reranker ──
         candidates = all_results[: self.rerank_top_k]
-        if self._can_rerank() and len(candidates) > k:
-            reranked = self._rerank(query, candidates, k)
-        else:
-            reranked = candidates[:k]
+        reranked = self._rerank(query, candidates, k) if self._can_rerank() and len(candidates) > k else candidates[:k]
 
         # 清理内部字段
         for r in reranked:
             r.pop("_rrf_score", None)
             r.pop("_retriever", None)
-
-        elapsed = time.monotonic() - start
 
         return reranked
 
@@ -238,7 +227,7 @@ class Retriever:
         """
         if len(query) > 15:
             return True
-        _COMPLEX_PATTERNS = [
+        complex_patterns = [
             # 中文疑问词
             r"(什么|如何|为什么|怎样|哪些|哪个|怎么|可否|是否)",
             # 中文医疗术语
@@ -252,10 +241,7 @@ class Retriever:
             # 英文医学关键术语
             r"\b(diagnosis|treatment|symptoms|signs|risk|therapy|imaging|management|prognosis|prevention)\b",
         ]
-        for pat in _COMPLEX_PATTERNS:
-            if re.search(pat, query, re.IGNORECASE):
-                return True
-        return False
+        return any(re.search(pat, query, re.IGNORECASE) for pat in complex_patterns)
 
     def _rewrite_query(self, query: str) -> list[str]:
         """调用 LLM 将用户问题改写为检索友好查询
@@ -306,6 +292,9 @@ class Retriever:
             line = re.sub(r"^\d+[.、\)\s]+", "", line).strip()
             # 去掉首尾引号
             line = line.strip("\"'")
+            # 过滤 LLM 降级占位文本（API 不可用时不应作为改写结果）
+            if line.startswith("[LLM 不可用"):
+                return None
             if len(line) >= 4:
                 lines.append(line)
 

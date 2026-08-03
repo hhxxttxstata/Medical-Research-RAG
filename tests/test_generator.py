@@ -70,11 +70,13 @@ class TestBuildRagPrompt:
 
     def test_prompt_contains_required_sections(self, sample_chunks):
         """生成的 prompt 应包含核心部分"""
-        prompt, source_map, relevance = build_rag_prompt("肺栓塞是什么", sample_chunks)
-        assert "## 参考文档" in prompt
-        assert "## 用户问题" in prompt
-        assert "## 回答" in prompt
-        assert "肺栓塞是什么" in prompt
+        messages, source_map, relevance = build_rag_prompt("肺栓塞是什么", sample_chunks)
+        # build_rag_prompt 返回 (messages, source_map, relevance) 三元组
+        prompt_content = messages[1]["content"]
+        assert "## 参考文档" in prompt_content
+        assert "## 用户问题" in prompt_content
+        assert "## 回答" in prompt_content
+        assert "肺栓塞是什么" in prompt_content
 
     def test_source_map_contains_all_chunks(self, sample_chunks):
         """source_map 应包含所有传入的 chunk"""
@@ -87,16 +89,18 @@ class TestBuildRagPrompt:
     def test_prompt_with_relevance_param(self, sample_chunks):
         """传入 relevance 参数不应影响 prompt 结构"""
         relevance = {"is_relevant": True, "top1_score": 0.9, "avg_score": 0.8, "overlap": 0.1, "reason": "test"}
-        prompt, source_map, returned_rel = build_rag_prompt("肺栓塞是什么", sample_chunks, relevance)
-        assert "## 参考文档" in prompt
-        assert "## 用户问题" in prompt
+        messages, source_map, returned_rel = build_rag_prompt("肺栓塞是什么", sample_chunks, relevance)
+        prompt_content = messages[1]["content"]
+        assert "## 参考文档" in prompt_content
+        assert "## 用户问题" in prompt_content
         assert returned_rel == relevance
 
     def test_prompt_empty_chunks(self):
         """空 chunk 列表时 prompt 仍应包含必要部分"""
-        prompt, source_map, relevance = build_rag_prompt("肺栓塞是什么", [])
-        assert "## 参考文档" in prompt
-        assert "（无参考文档）" in prompt
+        messages, source_map, relevance = build_rag_prompt("肺栓塞是什么", [])
+        prompt_content = messages[1]["content"]
+        assert "## 参考文档" in prompt_content
+        assert "（无参考文档）" in prompt_content
         assert source_map == {}
 
 
