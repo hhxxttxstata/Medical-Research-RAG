@@ -10,11 +10,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Free disk space
+        # 大镜像（torch+marker ~10GB）解压导出会撑爆 runner /tmp（~14GB），先释放预装软件
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: false
       - name: Build Docker image
         run: docker build -t pe-rag-backend -f Dockerfile.backend .
-      - name: Free disk space for Trivy export
-        # 大镜像（PyTorch 等）解压导出会撑爆 runner /tmp，先清构建缓存
-        run: docker builder prune -af
       - name: Run Trivy scan
         uses: aquasecurity/trivy-action@master
         with:
