@@ -329,6 +329,7 @@ class AgenticRAG:
                 ],
                 temperature=self.grade_temperature,
                 max_tokens=256,
+                call_type="grader",
             )
             m = re.search(r"\{[\s\S]*\}", response)
             if m:
@@ -383,6 +384,7 @@ class AgenticRAG:
                 ],
                 temperature=0.0,
                 max_tokens=256,
+                call_type="decompose",
             )
             m = re.search(r"\{[\s\S]*\}", response)
             if m:
@@ -548,6 +550,7 @@ class AgenticRAG:
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
                 temperature=0.0,
                 max_tokens=256,
+                call_type="decompose",
             )
             m = re.search(r"\{[\s\S]*\}", response)
             if m:
@@ -743,6 +746,7 @@ class AgenticRAG:
                 ],
                 temperature=0.0,
                 max_tokens=128,
+                call_type="policy",
             )
             m = re.search(r"\{[\s\S]*\}", response)
             if m:

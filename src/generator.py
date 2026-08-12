@@ -627,13 +627,13 @@ class LLMGenerator:
         """生成结构化 JSON 回答
 
         流程：
-          1. 生成 JSON
-          2. 验证引用
+          1. 生成 JSON          2. 验证引用
           3. （可选）Self-reflection：补全缺失字段
           4. 引用不合法最多重试 1 次
 
         Returns {"structured": dict, "raw": str, "valid": bool}
         """
+        self._track_call("generation")
         messages, source_map, relevance = prompt_and_source
 
         # 第一次生成

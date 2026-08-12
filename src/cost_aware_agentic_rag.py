@@ -191,6 +191,23 @@ class CostAwareAgenticRAG:
         comp = self._completeness(state)
         ood_rule = _is_out_of_domain(question)
 
+        # ── 0. multi-part 结构信号（Step 14 修正，零成本）：先拆解再评估 ──
+        # （bh_multi_01 / bh_partial_01 实证：cheap gate 直接 ACCEPT 单跳 → 丢 hop，
+        #   正确行为是 DECOMPOSE → hop 级证据采集。拆解是 LLM 调用，但该调用
+        #   换取 hop 级完整性，比盲目 ACCEPT 更划算。）
+        from .agentic_rag import AgenticRAG
+
+        is_multi_part = AgenticRAG._is_multi_part
+        if is_multi_part(question) and not state.hops and not state.decompose_attempted:
+            return "DECOMPOSE", "问题含多个独立子问题，先生成 hop plan"
+
+        # ── 0b. 时间敏感冲突（bh_ood_02 模式，零成本信号）：问题含年份 → UNCERTAIN ──
+        # （v2 实证：reranker top1=0.946 + 词面有"肺栓塞/指南"重叠仍可能 OOD——
+        #   "2026 年…新指南"在知识库里没有答案。时间敏感问题不能靠相关性
+        #   ACCEPT（相关性高 ≠ 答案存在），必须交给 grader 裁决答案是否被支持。）
+        if re.search(r"(?:20|19)\d{2}\s*年", question):
+            return "UNCERTAIN", "问题含年份（时间敏感），需 grader 裁决答案是否被支持"
+
         # ── clearly supported 1：有 plan 且全部 required hop SUPPORTED ──
         # （v2 的 bh_multi_01 修正：原始问题混合多子问题，rerank top1 可能只命中其一，
         #   但 hop 级证据已齐 → ACCEPT，无需 LLM）
@@ -408,6 +425,7 @@ class CostAwareAgenticRAG:
 
         grade: dict = {"decision": "insufficient", "reason": "initial", "evidence_score": 0.0}
         decision, action_mode = self._decide_once(question, state, grade, obs, fetch_k, verbose)
+        obs.policy_source = action_mode or "cheap_signal"
 
         while decision in ("RETRIEVE", "DECOMPOSE") and state.retrieval_budget > 0:
             state.route.append(decision)
@@ -489,6 +507,7 @@ class CostAwareAgenticRAG:
                 state.retrieval_budget -= 1
 
             decision, action_mode = self._decide_once(question, state, grade, obs, fetch_k, verbose)
+        obs.policy_source = action_mode or "cheap_signal"
 
         # ── 终局决策 ──
         if decision == "ACCEPT":
@@ -545,7 +564,9 @@ class CostAwareAgenticRAG:
         Returns:
             (decision, action_mode)  action_mode ∈ {cheap_signal, llm, rule_fallback}
         """
-        from .agentic_rag import _is_multi_part
+        from .agentic_rag import AgenticRAG
+
+        is_multi_part = AgenticRAG._is_multi_part
 
         # ── 1. Cheap Signal Gate ──
         verdict, reason = self._signal_verdict(state, question)
@@ -580,7 +601,7 @@ class CostAwareAgenticRAG:
             g_decision == "insufficient"
             and any(k in g_reason for k in ("未提及", "未找到", "不存在", "没有提及", "无相关"))
         )
-        if unsupported and not (_is_multi_part(question) and not state.hops):
+        if unsupported and not (is_multi_part(question) and not state.hops):
             if state.retrieval_budget > 0 and state.iteration < self.max_iterations:
                 grade["reason"] = "证据不支撑答案（grader），targeted 再试一次"
                 return "RETRIEVE", "llm"
@@ -588,7 +609,7 @@ class CostAwareAgenticRAG:
             return "ABSTAIN", "llm"
 
         # multi-part 未拆过 → 拆解
-        if _is_multi_part(question) and not state.hops and not state.decompose_attempted:
+        if is_multi_part(question) and not state.hops and not state.decompose_attempted:
             grade["reason"] = "问题含多个独立子问题，生成结构化 plan"
             return "DECOMPOSE", "llm"
 
