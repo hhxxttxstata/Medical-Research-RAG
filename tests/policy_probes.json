@@ -1,0 +1,77 @@
+{
+  "_comment": "Step 10.5 Policy Probe Set — 4 类 Policy × 明确预期路径。每题的 gold_chunk_ids 都人工核对过知识库原文。expected_route 是 Agentic RAG v1 的理想行为（Policy Node 生效后）。",
+  "probes": [
+    {
+      "id": "probe_accept_01",
+      "category": "accept",
+      "question": "Transformer 编码器由几个相同的层堆叠而成，每层包含哪两个子层？",
+      "expected_route": ["RETRIEVE", "ACCEPT"],
+      "gold_chunk_ids": ["14_Attention机制论文笔记_small_1"],
+      "notes": "single_chunk 直接可答 → ACCEPT"
+    },
+    {
+      "id": "probe_accept_02",
+      "category": "accept",
+      "question": "sPESI 评分中，收缩压低于多少 mmHg 记 1 分？",
+      "expected_route": ["RETRIEVE", "ACCEPT"],
+      "gold_chunk_ids": ["临床危险分层：理解sPESI评分_small_1"],
+      "notes": "单文档数值查询 → ACCEPT"
+    },
+    {
+      "id": "probe_accept_03",
+      "category": "accept",
+      "question": "急性肺栓塞的核心病理特征是什么？",
+      "expected_route": ["RETRIEVE", "ACCEPT"],
+      "gold_chunk_ids": ["PE的病理分型：急性 vs. 慢性_small_1"],
+      "notes": "定义类 → ACCEPT"
+    },
+    {
+      "id": "probe_retrieve_01",
+      "category": "retrieve",
+      "question": "肺栓塞患者出现休克时，按照临床危险分层属于哪一类？如何根据血流动力学状态进一步细分非高危患者？",
+      "expected_route": ["RETRIEVE", "RETRIEVE", "ACCEPT"],
+      "gold_chunk_ids": ["临床危险分层：理解sPESI评分_small_1"],
+      "notes": "同文档两部分内容（分类 + 细分），首次检索可能只命中一部分 → 二次检索补全"
+    },
+    {
+      "id": "probe_retrieve_02",
+      "category": "retrieve",
+      "question": "肺栓塞确诊检查中，当患者有 CTPA 禁忌证时，应该选择哪种替代检查？",
+      "expected_route": ["RETRIEVE", "RETRIEVE", "ACCEPT"],
+      "gold_chunk_ids": ["诊断流程指南：从怀疑到确诊_small_1"],
+      "notes": "关键词'禁忌证''替代'分散在文档后段 → 需二次检索"
+    },
+    {
+      "id": "probe_decompose_01",
+      "category": "decompose",
+      "question": "Transformer 中的 Multi-Head Attention 和 Positional Encoding 分别解决什么问题？",
+      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"],
+      "gold_chunk_ids": ["14_Attention机制论文笔记_small_1", "06_Transformer在医学影像中的应用_small_1"],
+      "notes": "两个独立子问题，跨两个文档（Attention 论文笔记 + Transformer 综述）→ DECOMPOSE"
+    },
+    {
+      "id": "probe_decompose_02",
+      "category": "decompose",
+      "question": "急性肺栓塞和慢性肺栓塞在病理生理上有什么区别？CTPA 影像上如何鉴别急性血栓与慢性血栓？",
+      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"],
+      "gold_chunk_ids": ["PE的病理分型：急性 vs. 慢性_small_1", "CTPA影像表现：从直接到间接_small_2"],
+      "notes": "两个独立子问题，跨两个文档（病理分型 + CTPA 影像）→ DECOMPOSE"
+    },
+    {
+      "id": "probe_abstain_01",
+      "category": "abstain",
+      "question": "2026 年诺贝尔物理学奖颁发给了哪位科学家？",
+      "expected_route": ["RETRIEVE", "ABSTAIN"],
+      "gold_chunk_ids": [],
+      "notes": "库外 + 时间敏感 → ABSTAIN"
+    },
+    {
+      "id": "probe_abstain_02",
+      "category": "abstain",
+      "question": "如何用 Rust 的 ownership 机制避免内存泄漏？",
+      "expected_route": ["RETRIEVE", "ABSTAIN"],
+      "gold_chunk_ids": [],
+      "notes": "库外技术主题（Rust 不在知识库）→ ABSTAIN"
+    }
+  ]
+}

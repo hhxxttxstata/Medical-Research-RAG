@@ -1,0 +1,168 @@
+{
+  "_comment": "Step 13 unseen holdout —— 与 dev benchmark 同 7 类分布，但题目不同。开发过程不看 failure，v2 定型后仅用于最终验证。",
+  "benchmark": [
+    {
+      "id": "ho_easy_01",
+      "type": "easy_single_hop",
+      "question": "肺结节检测方案中，体素间距归一化将图像重采样至什么分辨率？",
+      "hops": [
+        {"hop": 1, "question": "肺结节检测的CT预处理中体素间距归一化重采样至什么分辨率？", "gold_chunk_ids": ["02_CT影像肺结节检测技术方案_small_1"]}
+      ],
+      "final_answer": "1mm × 1mm × 1mm",
+      "expected_route": ["RETRIEVE", "ACCEPT"]
+    },
+    {
+      "id": "ho_easy_02",
+      "type": "easy_single_hop",
+      "question": "U-Net 解码器最后一层使用什么卷积将特征映射到目标类别数？",
+      "hops": [
+        {"hop": 1, "question": "U-Net解码器输出层使用什么卷积？", "gold_chunk_ids": ["03_U-Net医学图像分割论文笔记_small_2"]}
+      ],
+      "final_answer": "1×1 卷积",
+      "expected_route": ["RETRIEVE", "ACCEPT"]
+    },
+    {
+      "id": "ho_easy_03",
+      "type": "easy_single_hop",
+      "question": "sPESI 评分中，动脉血氧饱和度低于多少记 1 分？",
+      "hops": [
+        {"hop": 1, "question": "sPESI评分中动脉血氧饱和度低于多少记1分？", "gold_chunk_ids": ["临床危险分层：理解sPESI评分_small_1"]}
+      ],
+      "final_answer": "90%",
+      "expected_route": ["RETRIEVE", "ACCEPT"]
+    },
+    {
+      "id": "ho_hard_01",
+      "type": "hard_single_hop",
+      "question": "模型在 SNR=10dB 噪声下的敏感度下降了多少？SNR=20dB 时呢？",
+      "hops": [
+        {"hop": 1, "question": "AI模型在不同噪声水平SNR下的敏感度下降情况", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_1"]}
+      ],
+      "final_answer": "SNR=10dB 下降 8.5%，SNR=20dB 下降 2.1%",
+      "expected_route": ["RETRIEVE", "RETRIEVE", "ACCEPT"]
+    },
+    {
+      "id": "ho_hard_02",
+      "type": "hard_single_hop",
+      "question": "肺结节检测模型在第一阶段预训练和第二阶段微调分别使用什么优化器？",
+      "hops": [
+        {"hop": 1, "question": "肺结节检测模型训练使用什么优化器？", "gold_chunk_ids": ["02_CT影像肺结节检测技术方案_small_2"]}
+      ],
+      "final_answer": "Adam",
+      "expected_route": ["RETRIEVE", "RETRIEVE", "ACCEPT"]
+    },
+    {
+      "id": "ho_hard_03",
+      "type": "hard_single_hop",
+      "question": "内部测试集的 AUC 是多少？外部验证集呢？",
+      "hops": [
+        {"hop": 1, "question": "内部测试集的AUC是多少？", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_1"]},
+        {"hop": 2, "question": "外部验证集的AUC是多少？", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_1"]}
+      ],
+      "final_answer": "内部 0.981，外部 0.953",
+      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"]
+    },
+    {
+      "id": "ho_multi_01",
+      "type": "multi_hop_composition",
+      "question": "U-Net 在 ISBI 2012 细胞分割挑战赛的 PhC-U373 数据集上达到多少 IoU？U-Net 创新点是什么？",
+      "hops": [
+        {"hop": 1, "question": "U-Net在PhC-U373数据集上的IoU是多少？", "gold_chunk_ids": ["03_U-Net医学图像分割论文笔记_small_3"]},
+        {"hop": 2, "question": "U-Net的创新点是什么？", "gold_chunk_ids": ["03_U-Net医学图像分割论文笔记_small_1"]}
+      ],
+      "final_answer": "92.5% IoU；创新点是跳跃连接",
+      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"]
+    },
+    {
+      "id": "ho_multi_02",
+      "type": "multi_hop_composition",
+      "question": "肺栓塞诊断流程中，临床评估后 D-二聚体阴性可以做什么结论？D-二聚体阳性后首选什么确诊检查？",
+      "hops": [
+        {"hop": 1, "question": "D-二聚体阴性可以排除肺栓塞吗？", "gold_chunk_ids": ["诊断流程指南：从怀疑到确诊_small_1"]},
+        {"hop": 2, "question": "D-二聚体阳性后的首选确诊检查是什么？", "gold_chunk_ids": ["诊断流程指南：从怀疑到确诊_small_1"]}
+      ],
+      "final_answer": "阴性可排除；阳性后首选CTPA",
+      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"]
+    },
+    {
+      "id": "ho_comp_01",
+      "type": "comparison",
+      "question": "Transformer 的编码器和解码器各由多少层堆叠而成？",
+      "hops": [
+        {"hop": 1, "question": "Transformer编码器由多少层堆叠？", "gold_chunk_ids": ["14_Attention机制论文笔记_small_2"]},
+        {"hop": 2, "question": "Transformer解码器由多少层堆叠？", "gold_chunk_ids": ["14_Attention机制论文笔记_small_2"]}
+      ],
+      "final_answer": "编码器 6 层，解码器 6 层",
+      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"]
+    },
+    {
+      "id": "ho_comp_02",
+      "type": "comparison",
+      "question": "内部测试集和外部验证集的敏感度分别是多少？内部测试集的特异度呢？",
+      "hops": [
+        {"hop": 1, "question": "内部测试集的敏感度和特异度是多少？", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_1"]},
+        {"hop": 2, "question": "外部验证集的敏感度是多少？", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_1"]}
+      ],
+      "final_answer": "内部敏感度96.3%特异度91.8%；外部敏感度93.7%",
+      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"]
+    },
+    {
+      "id": "ho_constraint_01",
+      "type": "constraint_query",
+      "question": "针对医学图像标注数据有限的问题，U-Net 论文采用了哪些数据增强方法？",
+      "hops": [
+        {"hop": 1, "question": "U-Net针对标注数据有限采用了哪些数据增强方法？", "gold_chunk_ids": ["03_U-Net医学图像分割论文笔记_small_1"]}
+      ],
+      "final_answer": "弹性形变、旋转、缩放",
+      "expected_route": ["RETRIEVE", "ACCEPT"]
+    },
+    {
+      "id": "ho_constraint_02",
+      "type": "constraint_query",
+      "question": "对于临床评估高度可能的肺栓塞患者，指南推荐直接进行什么检查以明确诊断？",
+      "hops": [
+        {"hop": 1, "question": "临床高度可能的肺栓塞患者直接做什么检查确诊？", "gold_chunk_ids": ["诊断流程指南：从怀疑到确诊_small_1"]}
+      ],
+      "final_answer": "CTPA",
+      "expected_route": ["RETRIEVE", "ACCEPT"]
+    },
+    {
+      "id": "ho_partial_01",
+      "type": "partial_evidence",
+      "question": "三线性插值和三三次样条插值在体素重采样中各自的优缺点是什么？什么场景选择哪个？",
+      "hops": [
+        {"hop": 1, "question": "三线性插值的优缺点和使用场景", "gold_chunk_ids": ["DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理_small_2"]},
+        {"hop": 2, "question": "三三次样条插值的优缺点和使用场景", "gold_chunk_ids": ["DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理_small_2"]}
+      ],
+      "final_answer": "三线性快但损失锐利度；三三次在误差和速度间平衡",
+      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"]
+    },
+    {
+      "id": "ho_partial_02",
+      "type": "partial_evidence",
+      "question": "模型在外部验证集上的表现相比内部测试集如何？跨设备泛化中哪个设备表现最好？",
+      "hops": [
+        {"hop": 1, "question": "模型外部验证集与内部测试集的表现对比", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_1"]},
+        {"hop": 2, "question": "跨设备泛化中哪个设备表现最好？", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_2"]}
+      ],
+      "final_answer": "外部略降；GE设备最好",
+      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"]
+    },
+    {
+      "id": "ho_ood_01",
+      "type": "unsupported_ood",
+      "question": "如何在 PostgreSQL 中实现物化视图的增量刷新？",
+      "hops": [],
+      "final_answer": "",
+      "expected_route": ["RETRIEVE", "ABSTAIN"]
+    },
+    {
+      "id": "ho_ood_02",
+      "type": "unsupported_ood",
+      "question": "2025 年诺贝尔生理学或医学奖颁给了哪位科学家？",
+      "hops": [],
+      "final_answer": "",
+      "expected_route": ["RETRIEVE", "ABSTAIN"]
+    }
+  ]
+}
