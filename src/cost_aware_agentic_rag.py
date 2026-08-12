@@ -363,7 +363,9 @@ class CostAwareAgenticRAG:
 
     def policy_llm(self, question: str, state: AgentState, grade: dict) -> tuple[str, str, bool]:
         """LLM Policy（v2 同款；失败返回 (None, None, False)）"""
-        from .agentic_rag import _entity_overlap
+        from .agentic_rag import AgenticRAG
+
+        entity_overlap = AgenticRAG._entity_overlap
 
         try:
             chunks_text = "\n\n".join(f"[{i + 1}] {c['text'][:300]}" for i, c in enumerate(state.candidates[:8]))
@@ -380,7 +382,7 @@ class CostAwareAgenticRAG:
                             status=grade.get("decision", "insufficient"),
                             score=round(grade.get("evidence_score", 0.0), 2),
                             top1_rel=round(self._top1_rel(question, state.candidates), 3),
-                            entity_overlap=round(_entity_overlap(question, state.candidates), 2),
+                            entity_overlap=round(entity_overlap(question, state.candidates), 2),
                             history=history_text,
                             iteration=state.iteration,
                             max_iterations=self.max_iterations,
