@@ -456,6 +456,18 @@ class LLMGenerator:
         self._cb_failures = 0
         self._cb_open_until = 0.0
 
+        # Step 14 Observability：按调用类型分类计数（生成/评分/拆解/策略）
+        self._calls = {"generation": 0, "grader": 0, "decompose": 0, "policy": 0, "total": 0}
+
+    def call_counts(self) -> dict[str, int]:
+        """返回按类型统计的 LLM 调用次数（Step 14 成本观测）"""
+        return dict(self._calls)
+
+    def _track_call(self, call_type: str) -> None:
+        if call_type in self._calls:
+            self._calls[call_type] += 1
+            self._calls["total"] += 1
+
     def _is_valid_api_key(self, key: str) -> bool:
         """检查 API Key 是否有效（排除空值和占位符）"""
         if not key or key == "":
@@ -717,8 +729,14 @@ class LLMGenerator:
         messages: list[dict[str, str]],
         temperature: float | None = None,
         max_tokens: int = 2048,
+        call_type: str | None = None,
     ) -> str:
-        """直接传入 messages 列表，适用于多轮对话场景"""
+        """直接传入 messages 列表，适用于多轮对话场景
+
+        call_type: 调用分类（generation/grader/decompose/policy），用于 Step 14 成本观测。
+        """
+        if call_type:
+            self._track_call(call_type)
         start = time.monotonic()
 
         # Circuit Breaker 检查
