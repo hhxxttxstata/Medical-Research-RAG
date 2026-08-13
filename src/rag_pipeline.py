@@ -40,7 +40,7 @@ class RAGPipeline:
         data_dir: str = "data",
         embedding_provider: str = "local",
         embedding_model: str | None = None,
-        top_k: int = 3,
+        top_k: int = 5,
         chunk_min_chars: int = 300,
         chunk_max_chars: int = 500,
         retriever_mode: str = "hybrid",

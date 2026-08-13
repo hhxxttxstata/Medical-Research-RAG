@@ -81,12 +81,18 @@ for q in questions:
     top_score = vec_score or rrf_score
 
     expected_hit = False
-    if expected and sources:
-        expected_base = expected.rsplit(".", 1)[0]
-        expected_hit = any(
-            expected == s["metadata"].get("filename", "") or s["metadata"].get("filename", "") == expected_base
-            for s in sources
-        )
+    expected_base = expected.rsplit(".", 1)[0] if expected else ""
+    gold_chunk_ids = set(q.get("gold_evidence", {}).get("answer_bearing_chunk_ids", []))
+    if sources:
+        if gold_chunk_ids:
+            # chunk-level Gold：任一 answer-bearing chunk 出现在检索结果中即命中
+            expected_hit = any(s["id"] in gold_chunk_ids for s in sources)
+        elif expected:
+            # 兼容旧标注：document-level 命中
+            expected_hit = any(
+                expected == s["metadata"].get("filename", "") or s["metadata"].get("filename", "") == expected_base
+                for s in sources
+            )
 
     records.append(
         {
@@ -95,6 +101,8 @@ for q in questions:
             "difficulty": diff,
             "expected_doc": expected,
             "expected_hit": expected_hit,
+            "gold_chunk_ids": sorted(gold_chunk_ids),
+            "gold_answerability": q.get("gold_evidence", {}).get("answerability", ""),
             "num_retrieved": len(sources),
             "top_score": round(top_score, 4),
             "time_seconds": round(time.time() - t0, 2),

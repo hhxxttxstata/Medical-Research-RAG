@@ -126,12 +126,14 @@ class LuceneBM25Index:
         if not chunks:
             return
 
-        writer = self._ix.writer()
-
-        # 清空 + 重建
+        # 清空 + 重建：whoosh 新版无 index.CLEAR mergetype，直接删目录重建
         if clear_first:
-            writer.commit(mergetype=index.CLEAR)
-            writer = self._ix.writer()
+            self._ix.close()
+            shutil.rmtree(self.index_dir, ignore_errors=True)
+            os.makedirs(self.index_dir, exist_ok=True)
+            self._ix = index.create_in(self.index_dir, BM25_SCHEMA)
+
+        writer = self._ix.writer()
 
         for c in chunks:
             cid = c.get("chunk_id") or c.get("id", "")

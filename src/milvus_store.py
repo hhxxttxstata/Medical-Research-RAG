@@ -204,6 +204,7 @@ class MilvusStore:
         query_embedding: list[float],
         top_k: int = 5,
         where: dict | None = None,
+        timeout: float = 30,
     ) -> list[dict[str, Any]]:
         self._connect()
         if not self._connected or self._collection is None:
@@ -225,6 +226,7 @@ class MilvusStore:
                 limit=top_k,
                 output_fields=["chunk_id", "text", "metadata"],
                 filter=where or None,
+                timeout=timeout,
             )
 
             chunks = []
