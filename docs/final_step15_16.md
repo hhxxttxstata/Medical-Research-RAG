@@ -101,35 +101,28 @@ START → retrieve → evaluate → policy → [conditional edge]
 
 ### Parity 验证（Custom vs LangGraph，同一 input/index/prompt/budget）
 
-> 报告：`eval_results/step16_runtime_parity_final.json`（合并 7 批次）
+> 报告：`eval_results/step16_runtime_parity_final.json`（6 批独占串行，干净重跑）
 
 | 维度 | 结果 | 解读 |
 |---|---|---|
+| **Route 精确一致** | **18/18** | ✅ 决策序列完全一致 |
 | **Evidence Recall@5 一致** | **18/18** | ✅ 检索行为完全一致 |
-| **Route 精确一致** | **15/18** | 3 题差异均为 LLM decompose plan 波动（见下） |
-| **Abstain 判定一致** | 18/18 | ✅ 拒答决策完全一致 |
-| **能力指标（rescue/harm/ood/false_abstain）** | 逐批对比全同 | ✅ |
-| Answer 文本逐字一致 | 7/18 | LLM 生成温度波动（非编排差异），abstain 全部一致 |
-| Iterations 一致 | 17/18 | bh_comp_02 差异同源于 plan 波动 |
+| **终局动作一致（ACCEPT/ABSTAIN）** | **18/18** | ✅ 拒答/回答决策全一致 |
+| **能力指标（rescue/harm/ood/false_abstain）** | 逐批全同 | ✅ |
+| Answer 文本逐字一致 | 2/18 | LLM 生成温度波动（非编排差异），终局状态全一致 |
 
-**3 个 route 差异题分析**（全部同模式）：
-```
-custom: ['RETRIEVE', 'DECOMPOSE', 'ABSTAIN']
-lg    : ['RETRIEVE', 'DECOMPOSE', 'RETRIEVE', 'ABSTAIN']
-```
-- 根因：DECOMPOSE 的 LLM plan 输出有随机性（hop 数量/内容不同 → completeness 不同 → policy 多决策一次 RETRIEVE）
-- **终局决策全部一致**（都 ABSTAIN）、ER 一致、abstain 一致
-- 单元测试（确定性 stub）验证了同 LLM 输出下 route 100% 一致（8/8 passed）
+**并发污染教训（重要）**：首轮 6 批并行（两个 bash 链同时启动）违反 Milvus Lite 单进程纪律，
+产出 15/18 route 一致的假象（3 题差异被误判为"LLM plan 波动"）。串行独占重跑后 18/18 全一致——
+**评测期间严禁并发连接 Milvus Lite，违规数据一律作废重跑**。
 
 **结论：Behavioral Parity 成立**——核心 policy / evidence-state 架构 framework-agnostic。
-能力维度（ER/rescue/harm/ood/false_abstain）18/18 全同；route 微小差异由 LLM 非确定性导致，
-且不改变终局决策与证据质量。
+18/18 route + ER + 终局动作全同；answer 文本差异仅来自 LLM 生成温度。
 
 **面试话术**：
 "核心 Agentic RAG policy 和 evidence-state architecture 是我自己设计实现的，最初保持
 framework-agnostic 以便严格做 evaluation 和 ablation；系统稳定后又适配了 LangGraph 作为
 标准 orchestration runtime，并通过同一套 regression benchmark 验证行为一致
-（ER@5 18/18 全同、route 15/18 精确一致，其余 3 题为 LLM 非确定性导致的同终局差异）。"
+（18/18 route + ER + 终局动作全同，串行独占环境下零差异）。"
 
 ---
 
