@@ -1,7 +1,6 @@
 # RAG 系统依赖
 sentence-transformers==3.0.1
 pypdf==4.3.1
-marker-pdf>=0.3.0
 openai==1.30.0
 python-dotenv==1.0.1
 rank-bm25>=0.2.2
@@ -16,3 +15,9 @@ watchdog>=6.0.0
 redis>=5.0.0
 whoosh>=0.7.8
 pymilvus>=2.4.0
+# LangGraph Runtime Adapter（Step 16：Agentic RAG orchestration runtime）
+langgraph>=1.0.0
+# 可观测性（可选）
+opentelemetry-api>=1.30.0
+opentelemetry-sdk>=1.30.0
+opentelemetry-instrumentation-fastapi>=0.50b0
