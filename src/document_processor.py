@@ -6,10 +6,9 @@
     │
     ├─ 1. MetadataExtractor ── 提取标题、作者、摘要、DOI、一级标题结构
     │
-    ├─ 2. MarkerParser ──────── Marker PDF→结构化 Markdown（内置 Surya OCR）
-    │      │                     若未安装则回退：2a+2b
-    │      ├─ 2a. OCRController ── 扫描件检测 + Tesseract 兜底
-    │      └─ 2b. MarkdownConverter ─ 多栏/表格/图片占位 → Markdown
+    ├─ 2. PyMuPDF 文本提取 ─── 主路径
+    │      ├─ OCRController ── 扫描件检测 + Tesseract 兜底
+    │      └─ MarkdownConverter ─ 多栏/表格/图片占位 → Markdown
     │
     ├─ 3. CleanupPipeline ──── 手写数据清理管线（6 条规则 + 质量门禁）
     │      规则：unicode_normalize / collapse_blanks / remove_footers
@@ -21,10 +20,8 @@
          └─ parent chunks (800-2000字) → 用于 LLM 上下文注入
 
 面试价值：
-  - Marker 一条龙：OCR + 表格 + 公式 + 多栏，业界最佳 PDF→Markdown 方案
-  - 手写规则管线 vs 黑盒模型：可控、可解释、可调试
+  - PyMuPDF + 手写清洗规则管线：可控、可解释、可调试（无需 GPU）
   - Small-to-Big + Quality Gate 生产级 RAG 标配架构
-  - 所有依赖可选，无 Marker 环境自动降级
 """
 
 import os
@@ -172,81 +169,11 @@ class OCRController:
 
 
 # ═══════════════════════════════════════════════════════════════
-#  三、Marker PDF 解析器（主路径）
-# ═══════════════════════════════════════════════════════════════
-
-
-class MarkerParser:
-    """Marker PDF → 结构化 Markdown（内置 Surya OCR）
-
-    Marker 一条龙解决：
-      - 文字层提取（替代 PyMuPDF raw text）
-      - 扫描件 OCR（替代 Tesseract）
-      - 表格/公式/多栏/图片占位（替代 MarkdownConverter）
-      - 章节结构输出为 H1/H2/H3 heading（供 SmartChunker section-aware 切分）
-
-    安装：pip install marker-pdf
-    GPU 可选，CPU 也能跑（慢但能 work）。
-    """
-
-    def __init__(self):
-        self._available = None
-
-    @property
-    def available(self) -> bool:
-        if self._available is None:
-            # Marker 在容器内需要下载 Surya OCR 模型 (5 个文件)，
-            # 首次启动会阻塞且网络不稳定。强制走 PyMuPDF 回退管线。
-            self._available = False  # ponytail: skip Marker, use PyMuPDF fallback
-        return self._available
-
-    def parse(self, file_path: str) -> dict[str, Any]:
-        """用 Marker 解析 PDF，返回结构化结果
-
-        Returns:
-            {
-                "full_text": str,        # 完整 Markdown（含 heading 层级）
-                "images": dict,          # 提取的图片 {filename: base64}
-                "metadata": dict,        # Marker 提取的元数据
-                "pages": list[dict],     # 兼容旧接口
-            }
-        """
-        import time
-
-        from marker.converters.pdf import PdfConverter
-        from marker.models import create_model_dict
-
-        st = time.time()
-        converter = PdfConverter(artifact_dict=create_model_dict())
-        rendered = converter(file_path)
-        print(f"    ⏱ Marker 解析完成 ({time.time() - st:.1f}s)")
-
-        full_text = rendered.markdown
-        images = rendered.images or {}
-        meta = rendered.metadata or {}
-
-        # 构建兼容旧接口的 pages 列表
-        pages = []
-        for page_num, page_text in enumerate(full_text.split("\n\n"), start=1):
-            if page_text.strip():
-                pages.append({"page": page_num, "text": page_text.strip()})
-
-        return {
-            "full_text": full_text,
-            "images": images,
-            "metadata": meta,
-            "pages": pages,
-        }
-
-
-# ═══════════════════════════════════════════════════════════════
-#  四、Markdown 转换器（回退方案）
+#  三、Markdown 转换器（PyMuPDF 文本 → 结构化 Markdown）
 # ═══════════════════════════════════════════════════════════════
 
 
 class MarkdownConverter:
-    """将 PDF 原始文本转换为结构化 Markdown（Marker 不可用时的回退）"""
-
     """将 PDF 原始文本转换为结构化 Markdown
 
     处理策略：
@@ -338,6 +265,12 @@ class MarkdownConverter:
                 flush()
                 if result and result[-1] != "":
                     result.append("")
+                continue
+
+            # ── Markdown heading 行（# 前缀）：保持独立，不参与段落合并 ──
+            if s.startswith("#"):
+                flush()
+                result.append(s)
                 continue
 
             # ── 章节标题/短标头：保持独立行 ──
@@ -525,7 +458,22 @@ class MarkdownConverter:
 
         简单实现：如果页面平均行长短且行数多，推测为双栏，
         尝试按左右栏阅读顺序合并。
+
+        保护条件（满足任一即跳过，避免误截断普通文本）：
+          - 已有 Markdown 结构（# 标题）
+          - 结构化文档特征：中文章节号（第X章/一、/1.）、表格分隔线（---）、
+            等宽代码块或文件树（├── │ 等）
         """
+        # 已有 Markdown 结构 → 跳过双栏检测
+        if re.search(r"^#{1,3}\s+\S", text, re.MULTILINE):
+            return text
+        # 中文章节号标题（一、二、/1. /第X章）→ 结构化文档，跳过
+        if re.search(r"^[一二三四五六七八九十]+、", text, re.MULTILINE):
+            return text
+        # 表格分隔线 / 文件树 → 非学术 PDF 排版，跳过
+        if re.search(r"^[-|]+\s*$", text, re.MULTILINE) or "├──" in text:
+            return text
+
         lines = [l for l in text.split("\n") if l.strip()]
         if len(lines) < 10:
             return text
@@ -579,10 +527,12 @@ class MarkdownConverter:
             # 检测标题（大写开头、短行、无句号结尾）
             is_heading = False
             if not in_paragraph and len(stripped) < 80:
-                if re.match(r"^[A-Z]", stripped) and not stripped.endswith("."):
-                    is_heading = True
-                if re.match(r"^(第[一二三四五六七八九十]|[ⅠⅡⅢⅣⅤ]|1\.|2\.|3\.)", stripped):
-                    is_heading = True
+                # 排除已带 # 前缀的行（源文件自身的 Markdown 标题）
+                if not stripped.startswith("#") and not stripped.endswith((".", "。", "！", "？", "：", ":")):
+                    if re.match(r"^[A-Z]", stripped):
+                        is_heading = True
+                    if re.match(r"^(第[一二三四五六七八九十]|[ⅠⅡⅢⅣⅤ]|1\.|2\.|3\.)", stripped):
+                        is_heading = True
 
             if is_heading:
                 if md_lines and md_lines[-1] != "":
@@ -598,7 +548,7 @@ class MarkdownConverter:
 
 
 # ═══════════════════════════════════════════════════════════════
-#  五、数据清理管线（Marker/MD 输出 → SmartChunker 之前）
+#  四、数据清理管线（MD 输出 → SmartChunker 之前）
 # ═══════════════════════════════════════════════════════════════
 
 
@@ -730,7 +680,14 @@ class CleanupPipeline:
         """为没有 # 前缀的章节标题行添加 ## 前缀
 
         检测特征：独立短行、大写/数字开头、无句号结尾、不是 # 开头。
+
+        只对无 Markdown 结构的原始文本生效（已有 # 标题的 md/txt 跳过，
+        避免把"1. Python 3.10+"这类列表项误判为标题）。
         """
+        # 已有 Markdown 标题结构 → 跳过（结构化文档的标题已由 # 表达）
+        if re.search(r"^#{1,3}\s+\S", text, re.MULTILINE):
+            return text, {"passed": True, "detail": "已有 Markdown 标题结构，跳过"}
+
         lines = text.split("\n")
         changed = 0
         for i, line in enumerate(lines):
@@ -740,7 +697,10 @@ class CleanupPipeline:
             if len(s) > 60 or s.endswith((".", "。", "！", "？")):
                 continue
             # 中文章节：第X章 | X. | 一二三、 | （X）
-            if re.match(r"^(第[一二三四五六七八九十]+[章节]|（?\d+\）?[、.．])", s):
+            # 排除含冒号的列表项（"1. 原则：内容" 是正文不是标题），
+            # 排除编号后跟长句的行（真标题在编号后应只有短标题文本）
+            m = re.match(r"^(第[一二三四五六七八九十]+[章节]|（?\d+[、.．]|[一二三四五六七八九十]+[、.．])", s)
+            if m and "：" not in s and ":" not in s and len(s) - len(m.group(0)) <= 20:
                 lines[i] = f"## {s}"
                 changed += 1
                 continue
@@ -791,18 +751,28 @@ class CleanupPipeline:
         """
         rules_pass_rate = sum(1 for t in trace if t.get("passed", False)) / max(len(trace), 1)
 
-        meaningful = len(re.sub(r"\s", "", text))
-        total = len(text) + 1
+        # 有效内容比：只统计汉字/字母/数字（排除纯符号、标点、空白）
+        # 防止"!!!!/###/123"这类符号噪声被误判为高内容比
+        meaningful = len(re.findall(r"[一-鿿A-Za-z0-9]", text))
+        total = max(len(re.sub(r"\s", "", text)), 1)
         content_ratio = meaningful / total
 
         has_headings = 1.0 if re.search(r"^##?\s+\S", text, re.MULTILINE) else 0.0
 
         score = rules_pass_rate * 0.4 + content_ratio * 0.3 + has_headings * 0.3
-        passed = score >= self.min_quality_score
+        # 硬门槛 1：有效内容比极低（纯符号/纯数字噪声）时直接拦截，
+        # 防止 0.4 权重的 rules_pass_rate 把垃圾文档抬过阈值
+        hard_block = content_ratio < 0.05
+        # 硬门槛 2：有效内容过少（< 20 个汉字/单词）直接拦截——"abc"这类超短文
+        meaningful_len = len(re.findall(r"[一-鿿A-Za-z0-9]", text))
+        hard_block = hard_block or meaningful_len < 20
+        passed = score >= self.min_quality_score and not hard_block
 
         flags = list(metadata.get("_cleanup_flags", []))
         if not passed:
             flags.append("quality_gate_blocked")
+            if hard_block:
+                flags.append("content_ratio_too_low")
 
         report = {
             "score": round(score, 3),
@@ -818,7 +788,7 @@ class CleanupPipeline:
 
 
 # ═══════════════════════════════════════════════════════════════
-#  六、Section-aware SmartChunker
+#  五、Section-aware SmartChunker
 # ═══════════════════════════════════════════════════════════════
 
 
@@ -1001,81 +971,85 @@ class SmartChunker:
         small_max: int,
         doc_metadata: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        """从句子/短段落生成 small chunks"""
+        """从句子/短段落生成 small chunks
+
+        策略：
+          - 短段落（< small_min）不丢弃，与相邻短段落合并成一个 chunk
+          - 长段落按句子切分；尾部不足 small_min 时并入前一个 chunk 保留内容
+          - 保证文档内容不因阈值而丢失（此前短 md 文档 85%+ 内容被丢弃）
+        """
         chunks = []
-        chunk_id = 0
         # 使用实际文件名（去扩展名）保证跨文档 chunk_id 唯一
         file_stem = os.path.splitext(os.path.basename(doc_metadata.get("file_path", "")))[0]
         filename = file_stem or doc_metadata.get("title", "doc")
 
+        pending = ""  # 待合并的短段落缓冲
+        pending_heading = ""
+
+        def flush_pending():
+            nonlocal pending
+            if pending.strip():
+                chunks.append(self._mk_small(filename, pending.strip(), pending_heading, len(chunks) + 1))
+            pending = ""
+
         for node in nodes:
             if node.level != 2:  # 只切分段落级
                 continue
-
+            heading = node.heading
             text = node.text
-            # 如果段落本身 <= small_max，整段作为一个小 chunk
+
+            # 段落 <= small_max：并入 pending，够 small_min 就 flush
             if len(text) <= small_max:
-                if len(text) >= small_min or not chunks:
-                    chunk_id += 1
-                    chunks.append(
-                        {
-                            "chunk_id": f"{filename}_small_{chunk_id}",
-                            "text": text,
-                            "type": "small",
-                            "metadata": {
-                                "filename": file_stem or doc_metadata.get("title", filename),
-                                "heading": node.heading,
-                                "parent_id": f"{filename}_parent_{len(chunks) // 3}",
-                                "chunk_index": chunk_id,
-                                "summary": text[:80],
-                            },
-                        }
-                    )
+                if pending and len(pending) + len(text) + 1 > small_max:
+                    flush_pending()
+                    pending_heading = heading
+                if not pending:
+                    pending_heading = heading
+                pending = pending + ("\n\n" + text if pending else text)
+                if len(pending) >= small_min:
+                    flush_pending()
                 continue
 
-            # 长段落按句子切分为多个 small chunks
+            # 长段落按句子切分
+            flush_pending()
+            pending_heading = heading
             sentences = self._split_sentences(text)
             buffer = ""
             for sent in sentences:
                 if len(buffer) + len(sent) > small_max and buffer:
+                    # 尾部不足 small_min 的碎块并入前一个 chunk（保留内容）
                     if len(buffer) >= small_min:
-                        chunk_id += 1
-                        chunks.append(
-                            {
-                                "chunk_id": f"{filename}_small_{chunk_id}",
-                                "text": buffer.strip(),
-                                "type": "small",
-                                "metadata": {
-                                    "filename": file_stem or doc_metadata.get("title", filename),
-                                    "heading": node.heading,
-                                    "parent_id": f"{filename}_parent_{len(chunks)}",
-                                    "chunk_index": chunk_id,
-                                    "summary": buffer[:80],
-                                },
-                            }
-                        )
+                        chunks.append(self._mk_small(filename, buffer.strip(), heading, len(chunks) + 1))
+                    elif chunks:
+                        chunks[-1]["text"] += "\n\n" + buffer.strip()
                     buffer = sent
                 else:
                     buffer += (" " if buffer else "") + sent
 
-            if buffer.strip() and len(buffer.strip()) >= small_min:
-                chunk_id += 1
-                chunks.append(
-                    {
-                        "chunk_id": f"{filename}_small_{chunk_id}",
-                        "text": buffer.strip(),
-                        "type": "small",
-                        "metadata": {
-                            "filename": file_stem or doc_metadata.get("title", filename),
-                            "heading": node.heading,
-                            "parent_id": f"{filename}_parent_{len(chunks)}",
-                            "chunk_index": chunk_id,
-                            "summary": buffer[:80],
-                        },
-                    }
-                )
+            if buffer.strip():
+                if len(buffer.strip()) >= small_min:
+                    chunks.append(self._mk_small(filename, buffer.strip(), heading, len(chunks) + 1))
+                elif chunks:
+                    chunks[-1]["text"] += "\n\n" + buffer.strip()
 
+        flush_pending()
         return chunks
+
+    @staticmethod
+    def _mk_small(filename: str, text: str, heading: str, chunk_id: int) -> dict[str, Any]:
+        """构造 small chunk 字典"""
+        return {
+            "chunk_id": f"{filename}_small_{chunk_id}",
+            "text": text,
+            "type": "small",
+            "metadata": {
+                "filename": filename,
+                "heading": heading,
+                "parent_id": f"{filename}_parent_{chunk_id // 3}",
+                "chunk_index": chunk_id,
+                "summary": text[:80],
+            },
+        }
 
     def _make_parent_chunks(
         self,
@@ -1186,8 +1160,7 @@ class SmartChunker:
 def process_document(file_path: str) -> dict[str, Any]:
     """文档处理管线入口
 
-    主路径：Marker PDF → 结构化 Markdown → CleanupPipeline → Smart Chunking
-    回退路径：PyMuPDF → OCR 检测 → MarkdownConverter → CleanupPipeline → Smart Chunking
+    主路径：PyMuPDF → MarkdownConverter → CleanupPipeline → Smart Chunking
 
     Args:
         file_path: PDF/MD/TXT 文件路径
@@ -1206,7 +1179,6 @@ def process_document(file_path: str) -> dict[str, Any]:
 
     filename = os.path.basename(file_path)
     suffix = os.path.splitext(filename)[1].lower()
-    use_marker = False  # 是否用 Marker 主路径
 
     # ── MD/TXT 文件：直接走文本加载 ──
     if suffix in (".md", ".txt"):
@@ -1214,43 +1186,23 @@ def process_document(file_path: str) -> dict[str, Any]:
         raw_text = doc.get("full_text", "")
         pages = doc.get("pages", [])
     else:
-        # ── PDF 文件：Marker 主路径 → 回退管线 ──
-        marker = MarkerParser()
-        if marker.available:
-            print(f"  🧠 Marker 解析: {filename}")
-            try:
-                result = marker.parse(file_path)
-                raw_text = result["full_text"]
-                pages = result["pages"]
-                use_marker = True
-                doc = {
-                    "filename": filename,
-                    "file_path": file_path,
-                    "file_type": "pdf",
-                    "total_pages": len(pages),
-                    "pages": pages,
-                    "full_text": raw_text,
-                }
-            except Exception as e:
-                print(f"  ⚠️ Marker 解析失败 ({e})，回退到 PyMuPDF 管线")
+        # ── PDF 文件：PyMuPDF 文本提取 ──
+        doc = load_document(file_path)
+        raw_text = doc.get("full_text", "")
+        pages = doc.get("pages", [])
 
-        if not use_marker:
-            doc = load_document(file_path)
-            raw_text = doc.get("full_text", "")
-            pages = doc.get("pages", [])
-
-            # 清理排版软件遗留的不可见控制字符（回退路径需要，Marker 已自带清理）
-            raw_text = _sanitize_text(raw_text)
-            pages = [{"page": p["page"], "text": _sanitize_text(p["text"])} for p in pages]
-            doc["full_text"] = raw_text
-            doc["pages"] = pages
+        # 清理排版软件遗留的不可见控制字符
+        raw_text = _sanitize_text(raw_text)
+        pages = [{"page": p["page"], "text": _sanitize_text(p["text"])} for p in pages]
+        doc["full_text"] = raw_text
+        doc["pages"] = pages
 
     # 2. 元数据提取
     metadata = MetadataExtractor.extract(raw_text, filename)
     metadata["file_path"] = file_path
 
-    # 3. OCR 检测（仅回退路径，Marker 自带 Surya OCR）
-    if not use_marker and suffix == ".pdf":
+    # 3. OCR 检测（扫描件自动降级）
+    if suffix == ".pdf":
         ocr = OCRController()
         if ocr.available and ocr.is_scanned(raw_text, len(pages)):
             print("  🔍 检测为扫描件，启用 OCR...")
@@ -1259,21 +1211,33 @@ def process_document(file_path: str) -> dict[str, Any]:
                 raw_text = scanned_text
                 metadata.update(MetadataExtractor.extract(scanned_text, filename))
 
-    # 4. Markdown 转换（仅回退路径，Marker 已输出 Markdown）
-    if use_marker:
-        markdown_text = raw_text
-    else:
-        markdown_text_input = raw_text  # 保持原始变量名向后兼容
-        markdown_text = MarkdownConverter.convert(pages, metadata)
-        if not markdown_text.strip() and markdown_text_input.strip():
-            markdown_text = markdown_text_input
+    # 4. Markdown 转换
+    markdown_text_input = raw_text  # 保持原始变量名向后兼容
+    markdown_text = MarkdownConverter.convert(pages, metadata)
+    if not markdown_text.strip() and markdown_text_input.strip():
+        markdown_text = markdown_text_input
 
     # 5. 数据清理管线（Markdown → CleanupPipeline → SmartChunker）
     cleanup = CleanupPipeline()
     markdown_text, cleanup_trace, quality = cleanup.run(markdown_text, metadata)
-    if not quality["passed"]:
-        print(f"  ⚠️ 质量门禁未通过 (score={quality['score']:.2f}), flags={quality['flags']}")
     metadata["_cleanup"] = {"trace": cleanup_trace, "quality": quality}
+
+    # 5.1 质量门禁——低于阈值自动降级：文档不入库，返回空 chunks + 标记
+    if not quality["passed"]:
+        print(
+            f"  🚫 质量门禁未通过 (score={quality['score']:.2f} < {cleanup.min_quality_score})，"
+            f"自动降级：文档不入库。flags={quality['flags']}"
+        )
+        return {
+            "filename": filename,
+            "file_path": file_path,
+            "metadata": metadata,
+            "full_text": markdown_text,
+            "small_chunks": [],
+            "parent_chunks": [],
+            "quality_blocked": True,
+            "quality_score": quality["score"],
+        }
 
     # 6. Smart Chunking——按文件大小动态缩放阈值
     chunker = SmartChunker()

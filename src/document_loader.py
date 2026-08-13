@@ -160,6 +160,9 @@ def load_and_process_from_dir(directory: str) -> list[dict[str, Any]]:
             try:
                 result = load_and_process_document(str(file))
                 results.append(result)
+                if result.get("quality_blocked"):
+                    print(f"  🚫 质量拦截: {file.name} (score={result.get('quality_score', 0):.2f})")
+                    continue
                 sc = len(result.get("small_chunks", []))
                 pc = len(result.get("parent_chunks", []))
                 print(f"  ✅ 处理: {file.name} (small={sc}, parent={pc})")

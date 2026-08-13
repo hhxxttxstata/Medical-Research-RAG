@@ -283,7 +283,47 @@ def metrics_by_difficulty(results: list[dict[str, Any]]) -> dict[str, dict[str, 
 
 
 # ══════════════════════════════════════════════════
-#  五、汇总
+#  六、Chunk-level Gold 指标（Step 8）
+# ══════════════════════════════════════════════════
+
+
+def gold_answerability_counts(results: list[dict[str, Any]]) -> dict[str, int]:
+    """按 answerability 统计问题数（Step 8 重标注）"""
+    from collections import Counter
+
+    return dict(Counter(r.get("gold_answerability", "unlabeled") for r in results if r.get("expected_doc")))
+
+
+def chunk_hit_rate(results: list[dict[str, Any]]) -> float:
+    """Chunk-level Hit Rate：answer-bearing chunk 出现在检索结果中的比例
+
+    与 hit_rate（document-level）的区别：
+      - document-level: expected_doc 文件出现即命中
+      - chunk-level:    gold_evidence 中的 answer_bearing_chunk_ids 出现即命中
+    对 24 个原 C 类问题（文档对但 chunk 错），只有 chunk-level 能正确评价。
+    """
+    labeled = [r for r in results if r.get("gold_chunk_ids")]
+    if not labeled:
+        return 0.0
+    hits = sum(1 for r in labeled if r.get("expected_hit"))
+    return hits / len(labeled)
+
+
+def unsupported_refusal_rate(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """对标注为 unsupported 的问题，统计系统是否正确拒答/低置信
+
+    注：当前 40 个 exact_match 重标注后无 unsupported 问题，
+    该指标为 0 分母保护，供未来扩展。
+    """
+    unsupported = [r for r in results if r.get("gold_answerability") == "unsupported"]
+    if not unsupported:
+        return {"count": 0, "refused": 0, "rate": 0.0}
+    refused = sum(1 for r in unsupported if r.get("correct_refusal", False))
+    return {"count": len(unsupported), "refused": refused, "rate": round(refused / len(unsupported), 4)}
+
+
+# ══════════════════════════════════════════════════
+#  七、汇总
 # ══════════════════════════════════════════════════
 
 
@@ -322,6 +362,12 @@ def compute_all_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
         "answer_efficiency": answer_token_efficiency(results),
         "false_positive_rate": round(fake_positive_rate(results), 4),
         "time_breakdown": response_time_breakdown(results),
+        "chunk_level": {
+            "labeled_count": len([r for r in results if r.get("gold_chunk_ids")]),
+            "chunk_hit_rate": round(chunk_hit_rate(results), 4),
+            "answerability": gold_answerability_counts(results),
+            "unsupported": unsupported_refusal_rate(results),
+        },
     }
 
     # 按类别细分
@@ -387,6 +433,13 @@ def print_metrics_report(metrics: dict[str, Any]) -> None:
     print(f"     平均总耗时:  {tb.get('avg_total_time', 0):.2f}s")
     print(f"     平均检索耗时:{tb.get('avg_retrieval_time', 0):.2f}s")
     print(f"     生成占比:    {tb.get('generation_ratio', 0):.1%}")
+
+    cl = metrics.get("chunk_level", {})
+    if cl.get("labeled_count"):
+        print("\n  🎯 Chunk-level Gold（Step 8 重标注）")
+        print(f"     标注题数:    {cl['labeled_count']}")
+        print(f"     Chunk Hit:  {cl['chunk_hit_rate']:.0%}")
+        print(f"     Answerability: {cl.get('answerability', {})}")
 
     print(f"\n  📦 总查询数: {overall['total_queries']}")
     print("=" * 70 + "\n")

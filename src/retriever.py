@@ -179,17 +179,41 @@ class Retriever:
         needs_rewrite = self._can_rewrite() and self._rewrite_gate(query)
         search_queries = self._rewrite_query(query) if needs_rewrite else [query]
 
+        # 改写后原始 query 也要纳入检索——改写是"辅助"不是"替代"，
+        # 防止 3 条改写都偏离时丢失原始表达（术语精确题尤其依赖原文）
+        if needs_rewrite and search_queries and search_queries[0] != query:
+            search_queries = [query] + search_queries
+
         # ── 阶段 1: 混合检索 ──
-        all_results = []
+        # 每条 query 的结果单独成段（按序 + 去重），供跨 query RRF 融合
+        per_query_results: list[list[dict]] = []
         seen_ids: set = set()
         fetch_k = max(k * 2, 20)
 
         for sq in search_queries:
             results = self._hybrid_retrieve(sq, fetch_k=fetch_k)
+            per_query_results.append(results)
             for r in results:
                 if r["id"] not in seen_ids:
-                    all_results.append(r)
                     seen_ids.add(r["id"])
+
+        # 跨 query RRF 二次融合：多条 query 的结果按排名贡献累计排序，
+        # 被多个角度同时命中的 chunk 加分（多角度确认 = 更相关）。
+        # 原始 query（第 1 条）加权 ×1.5——它是用户真实意图的最准确表达，
+        # 防止机器改写偏离时把正确结果压下去（术语精确题尤其如此）。
+        if len(per_query_results) > 1:
+            rrf_k = 60
+            score_map: dict[str, dict] = {}
+            for q_idx, q_results in enumerate(per_query_results):
+                weight = 1.5 if q_idx == 0 else 1.0  # 原 query 加权
+                for rank, r in enumerate(q_results):
+                    cid = r["id"]
+                    if cid not in score_map:
+                        score_map[cid] = {"score": 0.0, "result": r}
+                    score_map[cid]["score"] += weight / (rrf_k + rank + 1)
+            all_results = [v["result"] for _, v in sorted(score_map.items(), key=lambda x: x[1]["score"], reverse=True)]
+        else:
+            all_results = per_query_results[0]
 
         # ── 阶段 2: Reranker ──
         candidates = all_results[: self.rerank_top_k]

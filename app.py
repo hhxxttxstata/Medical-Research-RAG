@@ -3,9 +3,10 @@ FastAPI 应用入口 — RAG 问答 + CTPA 诊断
 接口:
   GET  /health              — 健康检查
   POST /documents/upload    — 上传文档入库
-  POST /chat                — RAG 问答（阻塞）
+  POST /chat                — RAG 问答（阻塞，可选附带 CTPA 影像）
   POST /chat/stream         — RAG 问答（SSE 流式）
-  POST /diagnosis/predict   — CTPA 影像诊断
+  POST /diagnosis/predict   — CTPA 影像诊断（单独）
+  POST /chat-with-ct        — RAG + CTPA 影像联合诊断
   GET  /diagnosis/model     — 诊断模型状态
   GET  /logs                — 请求日志
   GET  /stats               — 运行统计
@@ -17,6 +18,7 @@ import csv
 import json
 import os
 import sys
+import threading
 import time
 import uuid
 from datetime import datetime
@@ -32,6 +34,16 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request,
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+
+try:
+    from opentelemetry import trace
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+    _HAS_OTEL = True
+except ImportError:
+    trace = None
+    FastAPIInstrumentor = None
+    _HAS_OTEL = False
 
 from src.auth import verify_admin_api_key, verify_api_key
 from src.cache import CacheManager, RedisClient
@@ -54,7 +66,7 @@ class Settings:
     log_dir: str = os.path.abspath("logs")
     embedding_provider: str = "local"
     embedding_model: str | None = None
-    top_k: int = 10
+    top_k: int = 5
     chunk_min_chars: int = 300
     chunk_max_chars: int = 500
     vector_backend: str = "milvus"
@@ -157,6 +169,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── OpenTelemetry 自动埋点（可选依赖） ────────────
+_FastAPIInstrumentor = FastAPIInstrumentor  # name for is check
+if _HAS_OTEL:
+    _FastAPIInstrumentor.instrument_app(app)
+    tracer = trace.get_tracer(__name__)
+else:
+    tracer = None
+
 # ── 生命周期 ──────────────────────────────────────────
 
 
@@ -202,15 +222,22 @@ async def startup():
         milvus_host=settings.milvus_host,
         milvus_port=settings.milvus_port,
         milvus_lite=settings.milvus_lite,
+        diagnosis_model=diagnosis_model if diagnosis_model and diagnosis_model.is_loaded else None,
     )
 
-    count = pipeline.vector_store.count()
-    if count == 0:
-        print("\n📚 知识库为空，自动初始化...")
-        pipeline.initialize_knowledge_base()
+    # 后台初始化知识库（不阻塞服务启动）
+
+    def _async_init_kb():
         count = pipeline.vector_store.count()
-    else:
-        print(f"\n📚 知识库已就绪: {count} 个 Chunk")
+        if count == 0:
+            print("\n📚 知识库为空，后台初始化中...")
+            pipeline.initialize_knowledge_base()
+            cnt = pipeline.vector_store.count()
+            print(f"\n📚 知识库初始化完成: {cnt} 个 Chunk")
+        else:
+            print(f"\n📚 知识库已就绪: {count} 个 Chunk")
+
+    threading.Thread(target=_async_init_kb, daemon=True).start()
 
     # 将 cache 注入 embedding provider
     if pipeline:
@@ -416,6 +443,82 @@ async def chat(req: ChatRequest, request: Request, _: None = Depends(verify_api_
         is_refusal=result.get("is_refusal", False),
         process_log=log,
     )
+
+
+# ── 接口 4a: RAG + CTPA 联合诊断 ─────────────────────
+
+
+class ChatWithCTRequest(BaseModel):
+    question: str = Field(..., min_length=1)
+    top_k: int | None = Field(default=None, ge=1, le=20)
+
+
+@app.post("/chat-with-ct")
+async def chat_with_ct(
+    file: UploadFile = File(...),
+    question: str = Form(...),
+    top_k: int = Form(5),
+    _: None = Depends(verify_api_key),
+):
+    """上传 CTPA 影像 + 提问，RAG 检索知识库后结合诊断结果一起回答"""
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="服务尚未初始化完成")
+    if not diagnosis_model or not diagnosis_model.is_loaded:
+        raise HTTPException(status_code=503, detail="诊断模型未加载，请先配置 PE_MODEL_PATH")
+
+    # 提示注入检测
+    is_injection, injection_reason = detect_injection(question)
+    if is_injection:
+        raise HTTPException(status_code=400, detail=f"输入被拒绝：{injection_reason}")
+
+    suffix = Path(file.filename or "").suffix.lower()
+    is_nii = suffix == ".nii" or ".nii" in (file.filename or "")
+    if not is_nii:
+        raise HTTPException(status_code=400, detail="仅支持 NIfTI 格式 (.nii / .nii.gz)")
+
+    os.makedirs(_DIAGNOSIS_UPLOAD_DIR, exist_ok=True)
+    save_path = os.path.join(_DIAGNOSIS_UPLOAD_DIR, f"{uuid.uuid4().hex}_{file.filename}")
+    content = await file.read()
+    with open(save_path, "wb") as f:
+        f.write(content)
+
+    try:
+        result = await run_blocking(pipeline.query, question, top_k, save_path)
+    finally:
+        try:
+            os.remove(save_path)
+        except Exception:
+            pass
+
+    elapsed = result.get("time", 0)
+    diag = result.get("diagnosis_result") or {}
+
+    return {
+        "success": not result.get("error"),
+        "answer": result.get("answer", ""),
+        "structured": result.get("structured", {}),
+        "sources": [
+            {"id": s["id"], "filename": s["metadata"].get("filename", ""), "score": round(s["score"], 3)}
+            for s in result.get("sources", [])
+        ],
+        "diagnosis": {
+            "probability": diag.get("probability"),
+            "prediction": diag.get("prediction"),
+            "risk_level": "高风险"
+            if diag.get("probability", 0) >= 0.9
+            else "中风险"
+            if diag.get("probability", 0) >= 0.7
+            else "低风险"
+            if diag.get("probability", 0) >= 0.5
+            else "阴性",
+            "inference_time": diag.get("inference_time"),
+            "visualization": diag.get("visualization"),
+        }
+        if diag.get("success")
+        else None,
+        "elapsed": result.get("time", elapsed),
+        "is_refusal": result.get("is_refusal", False),
+    }
 
 
 # ── 接口 4: RAG 流式问答（SSE） ────────────────────────

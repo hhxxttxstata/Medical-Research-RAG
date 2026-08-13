@@ -15,7 +15,7 @@ services:
       - "8001:8000"
     volumes:
       # bind mount: 改源码只需 restart 不用 rebuild
-      - ./app.py:/app/app.py:ro
+      - ./app.py:/app/app.py
       - ./src:/app/src
       - ./models:/app/models:ro
       - ./data:/app/data
@@ -35,8 +35,8 @@ services:
       test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/health', timeout=5); assert r.status==200"]
       interval: 30s
       timeout: 10s
-      retries: 5
-      start_period: 120s
+      retries: 9999
+      start_period: 600s
     restart: unless-stopped
     depends_on:
       milvus:

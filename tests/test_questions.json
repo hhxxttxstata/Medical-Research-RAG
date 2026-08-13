@@ -9,7 +9,18 @@
       "Transformer",
       "医学影像",
       "注意力机制"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "06_Transformer在医学影像中的应用_small_1",
+        "06_Transformer在医学影像中的应用_small_2"
+      ],
+      "evidence_type": "cross_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_02",
@@ -21,7 +32,18 @@
       "肺结节",
       "CT",
       "检测"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "02_CT影像肺结节检测技术方案_small_1",
+        "02_CT影像肺结节检测技术方案_small_2"
+      ],
+      "evidence_type": "cross_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_03",
@@ -33,7 +55,17 @@
       "U-Net",
       "编码器",
       "解码器"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "03_U-Net医学图像分割论文笔记_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_04",
@@ -45,7 +77,17 @@
       "L3",
       "数据安全",
       "级别"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "05_企业数据安全管理制度_small_2"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_05",
@@ -57,7 +99,17 @@
       "急性",
       "慢性",
       "CTPA"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "CTPA影像表现：从直接到间接_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_06",
@@ -69,7 +121,17 @@
       "直接征象",
       "CTPA",
       "充盈缺损"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "CTPA影像表现：从直接到间接_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_07",
@@ -81,7 +143,17 @@
       "sPESI",
       "评分",
       "危险分层"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "临床危险分层：理解sPESI评分_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_08",
@@ -93,7 +165,17 @@
       "D-二聚体",
       "年龄",
       "临界值"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "诊断流程指南：从怀疑到确诊_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_09",
@@ -105,7 +187,18 @@
       "右心",
       "病理",
       "肺栓塞"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "PE的病理分型：急性 vs. 慢性_small_1",
+        "CTPA影像表现：从直接到间接_small_2"
+      ],
+      "evidence_type": "cross_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_10",
@@ -117,7 +210,17 @@
       "YEARS",
       "肺栓塞",
       "诊断"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "诊断流程指南：从怀疑到确诊_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_11",
@@ -130,7 +233,18 @@
       "检测",
       "分割",
       "分类"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "01_医学影像AI系统概述_small_1",
+        "01_医学影像AI系统概述_small_2"
+      ],
+      "evidence_type": "cross_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_12",
@@ -142,7 +256,17 @@
       "LUNA16",
       "888",
       "CT"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "02_CT影像肺结节检测技术方案_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_13",
@@ -155,7 +279,17 @@
       "空间位置信息",
       "编码器",
       "解码器"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "03_U-Net医学图像分割论文笔记_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_14",
@@ -168,7 +302,17 @@
       "显存",
       "24GB",
       "A100"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "04_系统部署运维手册_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_15",
@@ -181,7 +325,17 @@
       "每日",
       "备份",
       "90天"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "05_企业数据安全管理制度_small_2"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_16",
@@ -194,7 +348,17 @@
       "线性投影",
       "位置编码",
       "序列"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "06_Transformer在医学影像中的应用_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_17",
@@ -207,7 +371,18 @@
       "18:00",
       "企业微信",
       "在线"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "07_员工远程办公管理规定_small_1",
+        "07_员工远程办公管理规定_small_2"
+      ],
+      "evidence_type": "cross_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_18",
@@ -219,7 +394,17 @@
       "外部验证",
       "AUC",
       "0.953"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "08_AI模型评估与验证报告_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_19",
@@ -232,7 +417,17 @@
       "缩放",
       "平移",
       "序列切换"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "09_产品用户手册_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_20",
@@ -245,7 +440,17 @@
       "文本切分",
       "向量化",
       "Embedding"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "10_RAG系统技术架构文档_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_21",
@@ -258,7 +463,17 @@
       "复核",
       "终审",
       "抽检"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "11_医学图像数据标注规范_small_2"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_22",
@@ -271,7 +486,18 @@
       "create",
       "环境",
       "python"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "12_深度学习环境配置指南_small_1",
+        "16_RAG系统部署说明_small_1"
+      ],
+      "evidence_type": "cross_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_23",
@@ -284,7 +510,17 @@
       "辅助工具",
       "诊断权",
       "医生"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "13_企业AI伦理与合规指南_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_24",
@@ -297,7 +533,17 @@
       "softmax",
       "梯度消失",
       "点积"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "14_Attention机制论文笔记_small_2"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_25",
@@ -309,7 +555,17 @@
       "类型注解",
       "参数",
       "返回值"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "15_项目开发规范与代码风格指南_small_2"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_26",
@@ -322,7 +578,17 @@
       "Embedding",
       "下载",
       "模型"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "16_RAG系统部署说明_small_4"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_27",
@@ -335,7 +601,17 @@
       "流式",
       "Server-Sent",
       "token"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "17_API接口设计文档_small_2"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_28",
@@ -348,7 +624,19 @@
       "窗宽",
       "窗位",
       "HU"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "CT 窗宽窗位设置原理_small_2",
+        "02_CT影像肺结节检测技术方案_small_1",
+        "基于Res2Net注意力机制网络智能检测CT肺动脉成像急性肺动脉栓塞_李曼_small_11"
+      ],
+      "evidence_type": "cross_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_29",
@@ -361,7 +649,17 @@
       "Rescale Intercept",
       "HU",
       "线性变换"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_30",
@@ -374,7 +672,17 @@
       "慢性",
       "纤维",
       "偏心性"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "CTPA影像表现：从直接到间接_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_31",
@@ -387,7 +695,17 @@
       "不匹配",
       "低氧血症",
       "灌注"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "partially_answerable",
+      "answer_bearing_chunk_ids": [
+        "PE的病理分型：急性 vs. 慢性_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_32",
@@ -400,7 +718,17 @@
       "0分",
       "低危",
       "死亡率"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "临床危险分层：理解sPESI评分_small_2"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_33",
@@ -413,7 +741,17 @@
       "D-二聚体",
       "临界值",
       "校正"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "诊断流程指南：从怀疑到确诊_small_1"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_34",
@@ -426,7 +764,17 @@
       "正负样本",
       "不平衡",
       "微调"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "02_CT影像肺结节检测技术方案_small_2"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_35",
@@ -439,7 +787,17 @@
       "子空间",
       "线性投影",
       "拼接"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "14_Attention机制论文笔记_small_2"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_36",
@@ -452,7 +810,17 @@
       "最近邻",
       "重采样",
       "平滑"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理_small_2"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_37",
@@ -465,7 +833,17 @@
       "旋转",
       "数据增强",
       "泛化"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "03_U-Net医学图像分割论文笔记_small_2"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_38",
@@ -478,7 +856,17 @@
       "FGSM",
       "72%",
       "epsilon"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "08_AI模型评估与验证报告_small_3"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_39",
@@ -491,7 +879,17 @@
       "FAISS",
       "Milvus",
       "向量数据库"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "10_RAG系统技术架构文档_small_3"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "exact_40",
@@ -504,7 +902,17 @@
       "L3",
       "访问控制",
       "敏感"
-    ]
+    ],
+    "gold_evidence": {
+      "answerability": "answerable",
+      "answer_bearing_chunk_ids": [
+        "05_企业数据安全管理制度_small_2"
+      ],
+      "evidence_type": "single_chunk",
+      "chunking_failure": false,
+      "annotation_source": "llm",
+      "annotation_timestamp": "20260809_180227"
+    }
   },
   {
     "id": "cross_01",

@@ -4,9 +4,16 @@ chroma_db_eval/
 chroma_db_eval_tmp/
 chroma.sqlite3
 
+# Milvus Lite 数据库（运行产物，不入库）
+milvus_db/
+
+# BM25 磁盘索引（运行产物，可重建）
+lucene_bm25_index/
+
 # 日志
 logs/
 *.jsonl
+logs_*.txt
 
 # 环境变量
 .env

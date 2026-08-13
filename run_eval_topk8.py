@@ -1,10 +1,5 @@
 import os
 
-# 禁用 marker-pdf 防 segfault
-import src.document_processor
-
-src.document_processor.MarkerParser.available = False
-
 # 改用不同目录，避免文件锁冲突
 os.environ["_EVAL_CHROMA_DIR"] = "chroma_db_eval_tmp"
 

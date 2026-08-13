@@ -90,7 +90,9 @@ def show_status(pipeline: RAGPipeline):
     print("\n" + "=" * 60)
     print("  📊 RAG 系统状态")
     print("=" * 60)
-    print(f"\n📄 文档数: {len(list(Path(pipeline.data_dir).glob('*.md')) + list(Path(pipeline.data_dir).glob('*.txt')) + list(Path(pipeline.data_dir).glob('*.pdf')))}")
+    print(
+        f"\n📄 文档数: {len(list(Path(pipeline.data_dir).glob('*.md')) + list(Path(pipeline.data_dir).glob('*.txt')) + list(Path(pipeline.data_dir).glob('*.pdf')))}"
+    )
     print(f"🧩 Chunk: {pipeline.vector_store.count()}")
     print(f"🔧 Embedding: {pipeline.embedding_provider.__class__.__name__}")
     print(f"🎯 Top-K: {pipeline.top_k}")
