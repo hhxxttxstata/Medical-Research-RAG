@@ -1,0 +1,258 @@
+"""
+Agentic RAG v2 — LangGraph Runtime Adapter（Step 16）
+
+目的：不迁移 Agentic RAG Core，只把自研 while-loop orchestration 套成标准
+LangGraph StateGraph runtime，证明核心 policy / evidence-state 架构
+framework-agnostic（同一套检索、hop 追踪、信号门控在两种 runtime 下行为一致）。
+
+设计原则（final_step.md Step 16）：
+  - Hybrid Retriever / Reranker / HopState / Evidence Bank / Completeness /
+    Policy / Cost-aware Gate / Grader / Generator 全部不动
+  - 唯一改动：把 `while ... if action == ...` 的控制流换成 StateGraph 节点
+  - 状态在 LangGraph 的 state dict 中只存**引用**（AgentState 对象本身不变），
+    节点间的状态流转 = 读写同一 AgentState —— 行为与自定义 runner 完全一致
+
+图结构：
+    START → retrieve → accumulate → evaluate → policy → [conditional edge]
+                                                        ├─ ACCEPT → finalize → END
+                                                        ├─ RETRIEVE → retrieve
+                                                        └─ DECOMPOSE → decompose → retrieve
+    ABSTAIN（budget 耗尽）→ finalize（拒答）
+
+用法:
+    from src.langgraph_agent import LangGraphAgenticRAG
+    agent = LangGraphAgenticRAG(agent_v2)        # 包装已有的 AgenticRAG 实例
+    result = agent.run(question, fetch_k=20)     # 与 agent.run() 相同签名
+"""
+
+from typing import Any, Literal, TypedDict
+
+from langgraph.graph import END, START, StateGraph
+
+from .agentic_rag import AgenticRAG
+
+# ── LangGraph State：state dict 只存 AgentState 引用 + 本轮决策结果 ──
+
+
+class GraphState(TypedDict):
+    """LangGraph 的共享状态（TypedDict 契约）
+
+    - state: AgentState 对象引用（核心状态，节点间共享同一对象）
+    - decision: 当前策略决策（ACCEPT / RETRIEVE / DECOMPOSE / ABSTAIN）
+    - action_mode: 决策来源（cheap_signal / llm / rule_fallback，v2.1 兼容）
+    - reason: 决策原因
+    - final: run() 返回的结果 dict
+    - _grade: 上一轮 evidence_grade 结果（跨节点传递）
+    - _target_hop: RETRIEVE 的目标 hop（13D，跨节点传递）
+    """
+
+    state: Any
+    decision: str
+    action_mode: str
+    reason: str
+    final: dict | None
+    _grade: dict | None
+    _target_hop: dict | None
+
+
+class LangGraphAgenticRAG:
+    """Agentic RAG v2 的 LangGraph runtime 适配器
+
+    包装一个已有的 AgenticRAG 实例（冻结的 v2 或 v2.1 均可），把其工具与
+    决策逻辑挂到 StateGraph 节点上。节点内部全部调用被包装对象的方法——
+    零策略逻辑复制，保证两种 runtime 行为一致（parity 的前提）。
+    """
+
+    def __init__(self, agent: AgenticRAG):
+        self._agent = agent
+        self._fetch_k = 20  # 默认检索深度（run() 可覆盖）
+        self._graph = self._build_graph()
+
+    # ══════════════════════════════════════════════════
+    #  节点（每个节点只做一件事，行为与被包装 agent 的方法一一对应）
+    # ══════════════════════════════════════════════════
+
+    def _retrieve_node(self, gs: GraphState) -> GraphState:
+        """RETRIEVE：混合检索 → 证据累积（对应 AgenticRAG.run 的初始/再检索）"""
+        st = gs["state"]
+        q = st.original_query
+        if not st.retrieval_history:
+            # 初始检索
+            reason = "initial"
+            query = q
+        else:
+            # 再检索：有 target_hop 走 hop 定向，否则换角度
+            target = gs.get("_target_hop")
+            if target and st.hops:
+                query = target["query"]
+                reason = "targeted-hop"
+            else:
+                query = self._agent._build_retrieval_variant(st, q)
+                reason = "retrieve"
+        results = self._agent.hybrid_search(query, fetch_k=self._fetch_k, note=reason)
+        st.retrieval_history.append({"query": query, "sources": results, "iteration": st.iteration, "reason": reason})
+        self._agent._accumulate_evidence(st, results)
+        st.iteration += 1
+        st.retrieval_budget -= 1
+        gs["_target_hop"] = None
+        return gs
+
+    def _decompose_node(self, gs: GraphState) -> GraphState:
+        """DECOMPOSE：结构化拆解 → 逐 hop 定向检索（对应 run 的 DECOMPOSE 分支）"""
+        st = gs["state"]
+        st.decompose_attempted = True
+        plan = self._agent.decompose_plan(st.original_query)
+        if plan:
+            self._agent._init_hops_from_plan(st, plan)
+            for hop in st.hops:
+                if st.retrieval_budget <= 0:
+                    break
+                self._agent._targeted_retrieve(st, hop, fetch_k=self._fetch_k)
+                st.iteration += 1
+                st.retrieval_budget -= 1
+            completeness, missing = self._agent._compute_completeness(st)
+            st.completeness = completeness
+            if missing and st.retrieval_budget > 0:
+                for hop in missing:
+                    if st.retrieval_budget <= 0:
+                        break
+                    self._agent._targeted_retrieve(st, hop, fetch_k=self._fetch_k)
+                    st.iteration += 1
+                    st.retrieval_budget -= 1
+                completeness, missing = self._agent._compute_completeness(st)
+                st.completeness = completeness
+        else:
+            # 拆解失败 → 退化单跳再检索（与自定义 runner 一致）
+            st.hops = []
+            st.plan = []
+            more = self._agent.hybrid_search(
+                st.original_query, fetch_k=self._fetch_k, note="retry-after-decompose-fail"
+            )
+            st.retrieval_history.append(
+                {"query": st.original_query, "sources": more, "iteration": st.iteration, "reason": "retry"}
+            )
+            self._agent._accumulate_evidence(st, more)
+            st.iteration += 1
+            st.retrieval_budget -= 1
+        return gs
+
+    def _evaluate_node(self, gs: GraphState) -> GraphState:
+        """evaluate：evidence_grade（LLM grader + 规则 fallback，与 v2 相同）"""
+        st = gs["state"]
+        gs["_grade"] = self._agent.evidence_grade(st.original_query, st.candidates)
+        st.evidence_score = gs["_grade"]["evidence_score"]
+        return gs
+
+    def _policy_node(self, gs: GraphState) -> GraphState:
+        """policy：v2 的 Policy Node（同一个方法，同一个信号逻辑）"""
+        st = gs["state"]
+        status, decision, mode = self._agent.policy(st.original_query, st, gs["_grade"])
+        st.evidence_status = status
+        gs["decision"] = decision
+        gs["action_mode"] = mode
+        gs["reason"] = gs["_grade"].get("reason", "")
+        # 循环内动作追加到 route（与自定义 runner 的 while-top 一致；
+        # ACCEPT/ABSTAIN 由 finalize 追加，与自定义 runner 的终局一致）
+        if decision in ("RETRIEVE", "DECOMPOSE"):
+            st.route.append(decision)
+        # RETRIEVE 带 target_hop（13D）
+        target = gs["_grade"].get("target_hop")
+        gs["_target_hop"] = target
+        return gs
+
+    def _finalize_node(self, gs: GraphState) -> GraphState:
+        """finalize：终局 ACCEPT → 生成；ABSTAIN → 拒答（与 run 的终局逻辑一致）"""
+        st = gs["state"]
+        decision = gs["decision"]
+        if decision == "ACCEPT":
+            st.decision = "ACCEPT"
+            st.route.append("ACCEPT")
+            st.final_evidence = self._agent._select_final_evidence(
+                st.original_query, st.candidates, self._fetch_k, state=st
+            )
+            answer = self._agent.generate(st.original_query, st.final_evidence)
+        else:
+            st.decision = "ABSTAIN"
+            st.route.append("ABSTAIN")
+            st.abstain_reason = gs["reason"] or "检索预算耗尽"
+            st.final_evidence = st.candidates[: self._fetch_k]
+            answer = self._agent._abstain_response(st.original_query, st.abstain_reason)
+        gs["final"] = {
+            "state": st,
+            "answer": answer,
+            "sources": st.final_evidence,
+            "route": st.route,
+            "iterations": st.iteration,
+            "abstained": st.decision == "ABSTAIN",
+        }
+        return gs
+
+    # ══════════════════════════════════════════════════
+    #  图构建
+    # ══════════════════════════════════════════════════
+
+    def _build_graph(self):
+        g = StateGraph(GraphState)
+
+        g.add_node("retrieve", self._retrieve_node)
+        g.add_node("decompose", self._decompose_node)
+        g.add_node("evaluate", self._evaluate_node)
+        g.add_node("policy", self._policy_node)
+        g.add_node("finalize", self._finalize_node)
+
+        g.add_edge(START, "retrieve")
+        g.add_edge("retrieve", "evaluate")
+        g.add_edge("evaluate", "policy")
+
+        # conditional edge：policy 决策 → 路由（与 while 循环语义一致）
+        g.add_conditional_edges(
+            "policy",
+            self._route,
+            {
+                "ACCEPT": "finalize",
+                "RETRIEVE": "retrieve",
+                "DECOMPOSE": "decompose",
+                "ABSTAIN": "finalize",
+            },
+        )
+        # DECOMPOSE 执行后回到评估（plan 执行完 → completeness check）
+        g.add_edge("decompose", "evaluate")
+
+        # 终局（finalize 无后续边 → 隐式 END）
+        g.add_edge("finalize", END)
+        return g.compile()
+
+    @staticmethod
+    def _route(gs: GraphState) -> Literal["ACCEPT", "RETRIEVE", "DECOMPOSE", "ABSTAIN"]:
+        """路由条件：预算耗尽时强制 ABSTAIN（与自定义 runner 的 while 条件一致）"""
+        st = gs["state"]
+        if gs["decision"] in ("RETRIEVE", "DECOMPOSE") and st.retrieval_budget <= 0:
+            return "ABSTAIN"
+        return gs["decision"] or "ABSTAIN"
+
+    # ══════════════════════════════════════════════════
+    #  运行入口（与 AgenticRAG.run 相同签名，可无缝替换）
+    # ══════════════════════════════════════════════════
+
+    def run(self, question: str, fetch_k: int = 20, verbose: bool = False) -> dict[str, Any]:
+        """执行 Agentic RAG（LangGraph runtime）——与自定义 runner 同一契约"""
+        from .agentic_rag import AgentState
+
+        self._fetch_k = fetch_k
+        st = AgentState(original_query=question)
+        st.retrieval_budget = self._agent.max_iterations + 2
+        st.route.append("RETRIEVE")  # 与自定义 runner 的初始 route 一致
+
+        init: GraphState = {
+            "state": st,
+            "decision": "",
+            "action_mode": "",
+            "reason": "",
+            "final": None,
+            "_grade": {"decision": "insufficient", "reason": "initial", "evidence_score": 0.0},
+            "_target_hop": None,
+        }
+        out = self._graph.invoke(init)
+        result = out["final"]
+        result["elapsed"] = 0.0  # 保持返回契约（parity 对比用 state/answer/route）
+        return result
