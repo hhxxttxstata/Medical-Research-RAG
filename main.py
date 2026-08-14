@@ -6,10 +6,11 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -39,6 +40,9 @@ def parse_args():
     parser.add_argument("--chunk-size", type=int, default=500, help="Chunk 最大字数")
     parser.add_argument("--embedding-provider", type=str, choices=["local", "openai"], default="local")
     parser.add_argument("--embedding-model", type=str, default=None)
+    parser.add_argument("--milvus-lite", action="store_true", default=True, help="使用 Milvus Lite（本地免 Docker）")
+    parser.add_argument("--milvus-host", type=str, default="localhost")
+    parser.add_argument("--milvus-port", type=str, default="19530")
     return parser.parse_args()
 
 
@@ -49,12 +53,15 @@ def main():
 
     pipeline = RAGPipeline(
         data_dir="data",
-        persist_dir="chroma_db",
         embedding_provider=args.embedding_provider,
         embedding_model=args.embedding_model,
         top_k=args.top_k,
         chunk_min_chars=chunk_min,
         chunk_max_chars=chunk_max,
+        vector_backend="milvus",
+        milvus_host=args.milvus_host,
+        milvus_port=args.milvus_port,
+        milvus_lite=args.milvus_lite,
     )
 
     if args.status:
@@ -84,6 +91,31 @@ def main():
         print(f"\n📊 知识库: {count} 个 Chunk")
         print('💡 python main.py --query "你的问题"')
         print("   python main.py -i\n")
+
+
+def print_result(result: dict[str, Any]) -> None:
+    """打印单次问答结果"""
+    print("\n" + "=" * 60)
+    if result.get("is_refusal"):
+        print("  🚫 已拒答（知识库外问题）")
+    print(f"💬 回答:\n{result.get('answer', '')}")
+    structured = result.get("structured") or {}
+    if structured.get("confidence"):
+        print(f"\n📊 置信度: {structured.get('confidence')}")
+    if structured.get("evidence"):
+        print("\n📚 依据:")
+        for e in structured.get("evidence", []):
+            print(f"  - {e}")
+    if result.get("sources"):
+        print(f"\n📄 参考文档（{len(result['sources'])} 篇）:")
+        seen: set[str] = set()
+        for s in result["sources"]:
+            fn = (s.get("metadata") or {}).get("filename", "未知")
+            if fn not in seen:
+                seen.add(fn)
+                print(f"  - {fn}")
+    print(f"\n⏱️  耗时: {result.get('time', 0):.2f}s")
+    print("=" * 60 + "\n")
 
 
 def show_status(pipeline: RAGPipeline):
@@ -118,7 +150,7 @@ def interactive_mode(pipeline: RAGPipeline):
                 print("👋 再见！")
                 break
             result = pipeline.query(question)
-            pipeline.print_result(result)
+            print_result(result)
         except KeyboardInterrupt:
             print("\n\n👋 再见！")
             break

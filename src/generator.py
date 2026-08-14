@@ -18,8 +18,8 @@ from .embeddings import is_mostly_english
 
 # Windows GBK 编码兼容
 if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
 
 load_dotenv()
 
@@ -65,9 +65,11 @@ def compute_relevance(
     top1_score = retrieved_chunks[0].get("_vector_score")
     if top1_score is None:
         top1_score = retrieved_chunks[0]["score"]
-    avg_score = sum(
-        c.get("_vector_score") if c.get("_vector_score") is not None else c["score"] for c in retrieved_chunks
-    ) / len(retrieved_chunks)
+    scores: list[float] = []
+    for c in retrieved_chunks:
+        vs = c.get("_vector_score")
+        scores.append(vs if vs is not None else c["score"])
+    avg_score = sum(scores) / len(retrieved_chunks)
 
     # ── 2. BM25 辅助信号：前 3 个 chunk 是否有 hybrid 检索的双重确认 ──
     has_bm25_support = any(c.get("_retriever") == "hybrid" for c in retrieved_chunks[:3])
@@ -468,7 +470,7 @@ class LLMGenerator:
             self._calls[call_type] += 1
             self._calls["total"] += 1
 
-    def _is_valid_api_key(self, key: str) -> bool:
+    def _is_valid_api_key(self, key: str | None) -> bool:
         """检查 API Key 是否有效（排除空值和占位符）"""
         if not key or key == "":
             return False
@@ -477,13 +479,14 @@ class LLMGenerator:
 
     def _detect_api_type(self) -> str:
         """检测使用的 API 类型"""
+        base_url = self.base_url or ""
         if not self._is_valid_api_key(self.api_key):
             return "ollama"
-        if "deepseek" in self.base_url.lower():
+        if "deepseek" in base_url.lower():
             return "deepseek"
-        if "silicon" in self.base_url.lower():
+        if "silicon" in base_url.lower():
             return "siliconflow"
-        if "openai" in self.base_url.lower():
+        if "openai" in base_url.lower():
             return "openai"
         return "openai_compatible"
 
@@ -769,7 +772,7 @@ class LLMGenerator:
             "timeout": 30,
         }
         # DeepSeek 非思考模式保险：禁用 reasoning 输出（deepseek-chat 天然非思考，此参数仅兼容 v4 系列）
-        if "deepseek" in self.base_url.lower():
+        if "deepseek" in (self.base_url or "").lower():
             kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
         response = client.chat.completions.create(**kwargs)
         return response.choices[0].message.content
@@ -792,7 +795,7 @@ class LLMGenerator:
             "stream": True,
             "timeout": 30,
         }
-        if "deepseek" in self.base_url.lower():
+        if "deepseek" in (self.base_url or "").lower():
             kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
         response = client.chat.completions.create(**kwargs)
         for chunk in response:

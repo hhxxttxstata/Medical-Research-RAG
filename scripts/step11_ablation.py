@@ -79,15 +79,15 @@ def build_variants(retriever, generator, reranker):
     ad = AgenticRAG(retriever=retriever, generator=generator, reranker=reranker, max_iterations=2)
     orig_p = ad.policy
     ad.policy = lambda question, state, grade, _o=orig_p: (
-        (lambda s, a, m: (s, "RETRIEVE" if a == "DECOMPOSE" else a, m))(*_o(question, state, grade))
-    )
+        lambda s, a, m: (s, "RETRIEVE" if a == "DECOMPOSE" else a, m)
+    )(*_o(question, state, grade))
     variants["v1_no_decomp"] = lambda q, a=ad: a.run(q, fetch_k=FETCH_K, verbose=False)
 
     # v1 − Abstain：禁 ABSTAIN（硬答）
     aa = AgenticRAG(retriever=retriever, generator=generator, reranker=reranker, max_iterations=2)
     orig_p2 = aa.policy
-    aa.policy = lambda question, state, grade, _o=orig_p2: (
-        (lambda s, a, m: (s, "ACCEPT" if a == "ABSTAIN" else a, m))(*_o(question, state, grade))
+    aa.policy = lambda question, state, grade, _o=orig_p2: (lambda s, a, m: (s, "ACCEPT" if a == "ABSTAIN" else a, m))(
+        *_o(question, state, grade)
     )
     variants["v1_no_abstain"] = lambda q, a=aa: a.run(q, fetch_k=FETCH_K, verbose=False)
 

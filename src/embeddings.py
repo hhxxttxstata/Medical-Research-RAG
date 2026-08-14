@@ -11,6 +11,7 @@ Embedding 模块
 
 import os
 import re
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -65,7 +66,7 @@ DEFAULT_MODEL = "intfloat/multilingual-e5-base"
 class EmbeddingProvider:
     """Embedding 提供者基类"""
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed(self, texts: list[str], prefix: str | None = None) -> list[list[float]]:
         raise NotImplementedError
 
 
@@ -77,7 +78,7 @@ class SentenceTransformerEmbedding(EmbeddingProvider):
 
     def __init__(self, model_name: str = DEFAULT_MODEL):
         self.model_name = model_name
-        self._model = None
+        self._model: Any = None  # SentenceTransformer，按需懒加载
         self._is_e5 = "e5" in model_name.lower()
         self._cache = None  # EmbeddingCache 实例，由外部设置
         # ModelScope 本地缓存路径

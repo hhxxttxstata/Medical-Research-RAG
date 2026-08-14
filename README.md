@@ -71,6 +71,8 @@ Framework Integration Custom Runner ↔ LangGraph（18/18 behavioral parity）
 
 设计原则：**Agentic Core 框架无关**——policy / evidence-state 架构由我独立设计，先以自研 runner 严格评测（evaluation + ablation），冻结后用 LangGraph 标准 runtime 适配，同一 regression benchmark 验证行为一致。
 
+> **研究层 / 服务层分离（诚实交代）**：线上服务（`app.py` 的 `/chat`）跑的是上图中底部"RAG 底座"（frozen 混合检索 + 相关性门禁 + 结构化生成），保证稳定可服务；Agentic v2 / v2.1 是研究层成果——核心模块（`src/agentic_rag.py`、`src/cost_aware_agentic_rag.py`、`src/langgraph_agent.py`）完整实现并通过 dev/holdout 评测冻结。两者分离是工程决策（新策略先评测后上线），Agentic 上生产是部署层工作，非实验缺口。
+
 ## 关键结果
 
 ### 检索层（81 题，frozen）
@@ -78,9 +80,11 @@ Framework Integration Custom Runner ↔ LangGraph（18/18 behavioral parity）
 | 指标 | 值 |
 |---|---|
 | Hit Rate | 80.0% |
-| MRR | 0.800 |
-| NDCG@5 | 0.845 |
+| MRR | 0.507 |
+| NDCG@5 | 0.551 |
 | Refusal Accuracy | 80.2% |
+
+> MRR / NDCG@5 按 **document-level 真实 rank** 计算：以 expected_doc 在检索结果中首次出现的实际位置计分（与 `evaluate_system.py` 的命中判定同语义），未命中计 0。
 
 ### Agentic 层（18 题 dev + 16 题 holdout，frozen）
 
@@ -94,13 +98,20 @@ Framework Integration Custom Runner ↔ LangGraph（18/18 behavioral parity）
 | **LLM Grader Calls**（dev） | — | 18/18 | **1/18（-94%）** |
 | **LLM Calls/题**（dev） | — | 2.89 | **1.44（-50%）** |
 
+> v2.1 成本指标标注（dev）：cost-aware 策略在 18 题 dev 验证（grader -94%、calls/题 -50%）；
+> holdout 16 题是冻结验收集，v2 验收后未再复测 v2.1（复测属部署前验收步骤，未执行如实交代）。
+
 ### 生成层（Step 15，claim 级）
 
 | 指标 | 值 |
 |---|---|
 | Groundedness | **0.993**（74 claims 中 73 被证据支撑） |
 | Unsupported Claim Rate | **1/74 = 1.4%**（逐条显式记录） |
+| Answer Correctness | **4/18 = 22%**（宽松子串匹配，详见下） |
+| Correct Abstention | 2/2 |
 | OOD 正确拒答 | 2/2 |
+
+> **Answer Correctness 口径（诚实交代）**：该指标用宽松子串匹配把 LLM 生成文本与 gold 标准答案比对——LLM 会改写表述（同义替换、语序调整、补充上下文），子串命中率天然偏低（4/18）。它衡量的是"表述对齐度"，不是"事实正确性"；事实正确性由上一行 Groundedness（claim 级证据支撑）衡量：74 个 claims 中 73 个被证据支撑（0.993）。面试官若问"答案只有 22% 对的？"——答案是：22% 是表述对齐度，99.3% 是事实 grounded 率，两者衡量不同维度。
 
 ### 框架层（Step 16，18 题）
 
@@ -191,8 +202,8 @@ docker exec backend python evaluate.py --skip-reindex
 # 完整 Pipeline 评测（含 LLM 生成 + 拒答逻辑）
 docker exec backend python eval/run_full_pipeline_eval.py
 
-# Ragas 交叉验证
-docker exec backend python eval/run_ragas.py
+# Ragas 交叉验证（本地，依赖 ragas/datasets，见 requirements.txt）
+python eval/run_ragas.py
 
 # Agentic 评测（本地，无需 Docker）
 HF_HUB_OFFLINE=1 python scripts/step16_runtime_parity.py --start 1 --end 18

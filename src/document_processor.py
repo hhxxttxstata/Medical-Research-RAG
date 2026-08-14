@@ -246,7 +246,7 @@ class MarkdownConverter:
             a_end = a[-1] if a else ""
             b_start = b[0] if b else ""
             # 英文单词间：a-z + a-z 或 a-z + 数字 → 加空格
-            return re.match(r"[a-zA-Z0-9]", a_end) and re.match(r"[a-zA-Z0-9(]", b_start)
+            return re.match(r"[a-zA-Z0-9]", a_end) is not None and re.match(r"[a-zA-Z0-9(]", b_start) is not None
 
         def flush():
             if buffer:
@@ -381,7 +381,7 @@ class MarkdownConverter:
 
         while i < len(lines):
             # 检查从当前行开始是否有表格（连续至少 3 行看起来像表格行）
-            table_rows = []
+            table_rows: list[str] = []
             j = i
             while j < len(lines) and len(table_rows) < 20:
                 if MarkdownConverter._looks_like_table_row(lines[j]):
@@ -978,7 +978,7 @@ class SmartChunker:
           - 长段落按句子切分；尾部不足 small_min 时并入前一个 chunk 保留内容
           - 保证文档内容不因阈值而丢失（此前短 md 文档 85%+ 内容被丢弃）
         """
-        chunks = []
+        chunks: list[dict] = []
         # 使用实际文件名（去扩展名）保证跨文档 chunk_id 唯一
         file_stem = os.path.splitext(os.path.basename(doc_metadata.get("file_path", "")))[0]
         filename = file_stem or doc_metadata.get("title", "doc")

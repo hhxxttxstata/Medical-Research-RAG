@@ -25,7 +25,7 @@ framework-agnostic（同一套检索、hop 追踪、信号门控在两种 runtim
     result = agent.run(question, fetch_k=20)     # 与 agent.run() 相同签名
 """
 
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, TypedDict, cast
 
 from langgraph.graph import END, START, StateGraph
 
@@ -139,25 +139,26 @@ class LangGraphAgenticRAG:
     def _evaluate_node(self, gs: GraphState) -> GraphState:
         """evaluate：evidence_grade（LLM grader + 规则 fallback，与 v2 相同）"""
         st = gs["state"]
-        gs["_grade"] = self._agent.evidence_grade(st.original_query, st.candidates)
-        st.evidence_score = gs["_grade"]["evidence_score"]
+        grade = self._agent.evidence_grade(st.original_query, st.candidates)
+        gs["_grade"] = grade
+        st.evidence_score = grade["evidence_score"]
         return gs
 
     def _policy_node(self, gs: GraphState) -> GraphState:
         """policy：v2 的 Policy Node（同一个方法，同一个信号逻辑）"""
         st = gs["state"]
-        status, decision, mode = self._agent.policy(st.original_query, st, gs["_grade"])
+        grade = gs["_grade"] or {}
+        status, decision, mode = self._agent.policy(st.original_query, st, grade)
         st.evidence_status = status
         gs["decision"] = decision
         gs["action_mode"] = mode
-        gs["reason"] = gs["_grade"].get("reason", "")
+        gs["reason"] = grade.get("reason", "")
         # 循环内动作追加到 route（与自定义 runner 的 while-top 一致；
         # ACCEPT/ABSTAIN 由 finalize 追加，与自定义 runner 的终局一致）
         if decision in ("RETRIEVE", "DECOMPOSE"):
             st.route.append(decision)
         # RETRIEVE 带 target_hop（13D）
-        target = gs["_grade"].get("target_hop")
-        gs["_target_hop"] = target
+        gs["_target_hop"] = grade.get("target_hop")
         return gs
 
     def _finalize_node(self, gs: GraphState) -> GraphState:
@@ -228,7 +229,8 @@ class LangGraphAgenticRAG:
         st = gs["state"]
         if gs["decision"] in ("RETRIEVE", "DECOMPOSE") and st.retrieval_budget <= 0:
             return "ABSTAIN"
-        return gs["decision"] or "ABSTAIN"
+        # policy 保证 decision ∈ 4 种动作之一
+        return cast(Literal["ACCEPT", "RETRIEVE", "DECOMPOSE", "ABSTAIN"], gs["decision"] or "ABSTAIN")
 
     # ══════════════════════════════════════════════════
     #  运行入口（与 AgenticRAG.run 相同签名，可无缝替换）

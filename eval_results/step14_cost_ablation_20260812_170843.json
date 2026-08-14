@@ -1,0 +1,477 @@
+{
+  "timestamp": "20260812_170843",
+  "note": "Step 14 A/B: Frozen v2 vs Cost-aware v2.1 on frozen dev benchmark (18)",
+  "capability": {
+    "v2": {
+      "Final Answer Acc": "4/18",
+      "Evidence Recall@5": 0.889,
+      "Hop Recall@5": 0.889,
+      "Completeness": 0.889,
+      "Final Rescue": 1,
+      "Harm": 0,
+      "NetUtility": 1,
+      "OOD Reject": "2/2",
+      "False Abstain": "1/16",
+      "Policy Action Acc": "14/18",
+      "Avg Iterations": 1.56
+    },
+    "v2_1": {
+      "Final Answer Acc": "5/18",
+      "Evidence Recall@5": 0.806,
+      "Hop Recall@5": 0.806,
+      "Completeness": 0.806,
+      "Final Rescue": 0,
+      "Harm": 0,
+      "NetUtility": 0,
+      "OOD Reject": "1/2",
+      "False Abstain": "0/16",
+      "Policy Action Acc": "6/18",
+      "Avg Iterations": 1.06
+    }
+  },
+  "cost": {
+    "n": 18,
+    "grader_calls_v2": 18,
+    "grader_calls_v21": 0,
+    "grader_reduction_pct": 100.0,
+    "llm_calls_v2": 51,
+    "llm_calls_v21": 17,
+    "latency_v2": {
+      "avg": 332.1,
+      "p95": 1321.8,
+      "max": 1321.8
+    },
+    "latency_v21": {
+      "avg": 243.6,
+      "p95": 290.3,
+      "max": 290.3
+    },
+    "latency_reduction_pct": 26.6,
+    "timeout_v21": 0,
+    "fallback_v21": 0,
+    "policy_llm_calls_v21": 0,
+    "retrieval_calls_v2": 28,
+    "retrieval_calls_v21": 19,
+    "grader_reasons": {
+      "n/a": 18
+    }
+  },
+  "details": [
+    {
+      "id": "bh_easy_01",
+      "type": "easy_single_hop",
+      "class_v2": "both",
+      "class_v21": "both",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 1,
+        "grader_calls": 0,
+        "generation_calls": 1,
+        "policy_llm_calls": 0,
+        "iterations": 1,
+        "latency_ms": 281588
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "bh_easy_02",
+      "type": "easy_single_hop",
+      "class_v2": "both",
+      "class_v21": "both",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 1,
+        "grader_calls": 0,
+        "generation_calls": 1,
+        "policy_llm_calls": 0,
+        "iterations": 1,
+        "latency_ms": 283403
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "bh_easy_03",
+      "type": "easy_single_hop",
+      "class_v2": "both",
+      "class_v21": "both",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 1,
+        "grader_calls": 0,
+        "generation_calls": 1,
+        "policy_llm_calls": 0,
+        "iterations": 1,
+        "latency_ms": 168855
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "bh_hard_01",
+      "type": "hard_single_hop",
+      "class_v2": "both",
+      "class_v21": "both",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 1,
+        "grader_calls": 0,
+        "generation_calls": 1,
+        "policy_llm_calls": 0,
+        "iterations": 1,
+        "latency_ms": 289945
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "bh_hard_02",
+      "type": "hard_single_hop",
+      "class_v2": "both",
+      "class_v21": "both",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 1,
+        "grader_calls": 0,
+        "generation_calls": 1,
+        "policy_llm_calls": 0,
+        "iterations": 1,
+        "latency_ms": 290256
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "bh_hard_03",
+      "type": "hard_single_hop",
+      "class_v2": "both",
+      "class_v21": "both",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 1,
+        "grader_calls": 0,
+        "generation_calls": 1,
+        "policy_llm_calls": 0,
+        "iterations": 1,
+        "latency_ms": 122229
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "bh_multi_01",
+      "type": "multi_hop_composition",
+      "class_v2": "both",
+      "class_v21": "both",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 1,
+        "grader_calls": 0,
+        "generation_calls": 1,
+        "policy_llm_calls": 0,
+        "iterations": 1,
+        "latency_ms": 279541
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "bh_multi_02",
+      "type": "multi_hop_composition",
+      "class_v2": "both",
+      "class_v21": "both",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 1,
+        "grader_calls": 0,
+        "generation_calls": 1,
+        "policy_llm_calls": 0,
+        "iterations": 1,
+        "latency_ms": 277431
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "bh_multi_03",
+      "type": "multi_hop_composition",
+      "class_v2": "both",
+      "class_v21": "both",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 1,
+        "grader_calls": 0,
+        "generation_calls": 1,
+        "policy_llm_calls": 0,
+        "iterations": 1,
+        "latency_ms": 274024
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "bh_comp_01",
+      "type": "comparison",
+      "class_v2": "both",
+      "class_v21": "both",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 1,
+        "grader_calls": 0,
+        "generation_calls": 1,
+        "policy_llm_calls": 0,
+        "iterations": 1,
+        "latency_ms": 162906
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "bh_comp_02",
+      "type": "comparison",
+      "class_v2": "both",
+      "class_v21": "both",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 1,
+        "grader_calls": 0,
+        "generation_calls": 1,
+        "policy_llm_calls": 0,
+        "iterations": 1,
+        "latency_ms": 273659
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "bh_comp_03",
+      "type": "comparison",
+      "class_v2": "both",
+      "class_v21": "both",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 1,
+        "grader_calls": 0,
+        "generation_calls": 1,
+        "policy_llm_calls": 0,
+        "iterations": 1,
+        "latency_ms": 272505
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "bh_constraint_01",
+      "type": "constraint_query",
+      "class_v2": "both",
+      "class_v21": "both",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 1,
+        "grader_calls": 0,
+        "generation_calls": 1,
+        "policy_llm_calls": 0,
+        "iterations": 1,
+        "latency_ms": 268887
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "bh_constraint_02",
+      "type": "constraint_query",
+      "class_v2": "both",
+      "class_v21": "both",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 1,
+        "grader_calls": 0,
+        "generation_calls": 1,
+        "policy_llm_calls": 0,
+        "iterations": 1,
+        "latency_ms": 277217
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "bh_partial_01",
+      "type": "partial_evidence",
+      "class_v2": "rescue",
+      "class_v21": "none",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 1,
+        "grader_calls": 0,
+        "generation_calls": 1,
+        "policy_llm_calls": 0,
+        "iterations": 1,
+        "latency_ms": 171114
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "bh_partial_02",
+      "type": "partial_evidence",
+      "class_v2": "both",
+      "class_v21": "both",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 1,
+        "grader_calls": 0,
+        "generation_calls": 1,
+        "policy_llm_calls": 0,
+        "iterations": 1,
+        "latency_ms": 170363
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "bh_ood_01",
+      "type": "unsupported_ood",
+      "class_v2": "ood",
+      "class_v21": "ood",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 2,
+        "grader_calls": 0,
+        "generation_calls": 0,
+        "policy_llm_calls": 0,
+        "iterations": 2,
+        "latency_ms": 254129
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "RETRIEVE",
+        "ABSTAIN"
+      ]
+    },
+    {
+      "id": "bh_ood_02",
+      "type": "unsupported_ood",
+      "class_v2": "ood",
+      "class_v21": "ood",
+      "v21_obs": {
+        "policy_source": "cheap_signal",
+        "grader_called": false,
+        "grader_reason": "",
+        "fallback_used": false,
+        "operational_error": "none",
+        "retrieval_calls": 1,
+        "grader_calls": 0,
+        "generation_calls": 1,
+        "policy_llm_calls": 0,
+        "iterations": 1,
+        "latency_ms": 267266
+      },
+      "route_v21": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    }
+  ],
+  "elapsed": 11432.4
+}

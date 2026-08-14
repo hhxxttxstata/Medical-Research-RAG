@@ -18,6 +18,7 @@ reranker.py — Cross-encoder 重排序器
 import logging
 import os
 import time
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ class CrossEncoderReranker:
 
     MODEL_NAME = "BAAI/bge-reranker-v2-m3"
 
-    _model = None  # 类级缓存，避免多个实例重复加载
+    _model: Any = None  # 类级缓存，避免多个实例重复加载
 
     def __init__(self, model_name: str | None = None, batch_size: int = 64):
         self._model_name = model_name or os.getenv("RERANKER_MODEL", self.MODEL_NAME)

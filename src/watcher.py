@@ -17,6 +17,7 @@ import logging
 import os
 import time
 from pathlib import Path
+from typing import Any
 
 import watchdog.events
 
@@ -163,7 +164,7 @@ class DocumentWatcher:
         self._pipeline = pipeline
         self._watch_dir = os.path.abspath(watch_dir)
         self._tracker = tracker or ProcessedFilesTracker()
-        self._observer = None
+        self._observer: Any = None  # watchdog Observer（stub 噪音）
         self._running = False
 
     def start(self) -> None:

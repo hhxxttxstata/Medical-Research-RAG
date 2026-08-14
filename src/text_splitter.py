@@ -145,7 +145,7 @@ def _split_long_paragraph(text: str, max_chars: int, overlap: int) -> list[str]:
         text,
     )
     # 过滤过短的误拆结果（保护缩写词，仅英文场景启用）
-    filtered = []
+    filtered: list[str] = []
     text_is_en = is_mostly_english(text) if len(text) > 50 else is_mostly_english(text)
     for s in sentences:
         s = s.strip()

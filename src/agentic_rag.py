@@ -556,7 +556,7 @@ class AgenticRAG:
             if m:
                 data = json.loads(m.group())
                 if data.get("decomposed"):
-                    plan = []
+                    plan: list[dict] = []
                     for item in data.get("plan", []):
                         plan.append(
                             {
@@ -926,9 +926,9 @@ class AgenticRAG:
                 # ── 13D：targeted retrieval（携带缺失 hop 的 subquery）──
                 target = grade.get("target_hop")
                 if target and state.hops:
-                    hop = next((h for h in state.hops if h.hop_id == target["hop_id"]), None)
-                    if hop:
-                        self._targeted_retrieve(state, hop, fetch_k=fetch_k)
+                    found_hop = next((h for h in state.hops if h.hop_id == target["hop_id"]), None)
+                    if found_hop:
+                        self._targeted_retrieve(state, found_hop, fetch_k=fetch_k)
                         state.iteration += 1
                         state.retrieval_budget -= 1
                     else:

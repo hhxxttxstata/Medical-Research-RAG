@@ -22,6 +22,7 @@ import json
 import os
 import re
 import shutil
+from typing import Any
 
 from whoosh import fields, index, scoring
 from whoosh.analysis import Token, Tokenizer
@@ -91,7 +92,7 @@ class LuceneBM25Index:
 
     def __init__(self, index_dir: str = "lucene_bm25_index"):
         self.index_dir = os.path.abspath(index_dir)
-        self._ix = None
+        self._ix: Any = None  # whoosh Index（stub 将 create_in 标为 Optional，运行时必非 None）
         self._open_or_create()
 
     # ── 内部方法 ────────────────────────────────────

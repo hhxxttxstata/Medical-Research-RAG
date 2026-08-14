@@ -37,8 +37,8 @@ import numpy as np
 
 # Windows GBK 兼容
 if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
 
 # ── 可选依赖导入 ──────────────────────────────────────
 
@@ -55,9 +55,9 @@ try:
     import torch.nn as nn
     import torch.nn.functional as F
 except ImportError:
-    torch = None
-    nn = None
-    F = None
+    torch = None  # type: ignore[assignment]
+    nn = None  # type: ignore[assignment]
+    F = None  # type: ignore[assignment]
     _MISSING_DEPS.append("torch")
 
 try:
@@ -361,7 +361,7 @@ class CTPADiagnosisModel:
         if torch and torch.cuda.is_available():
             self.device = "cuda"
 
-        self._model = None
+        self._model: Any = None  # ResNet25dAttention，按需延迟加载
         self._loaded = False
         self._load_error = ""
         self._load_time = 0.0
@@ -856,7 +856,7 @@ def generate_visualization(
     combined_risk = np.array(slab_probabilities) * 0.5 + np.array(attention_weights) * 0.5
     top_indices = np.argsort(combined_risk)[::-1][:top_k]
 
-    vis_result = {"top_slices": []}
+    vis_result: dict[str, Any] = {"top_slices": []}
     depth = volume_hu.shape[0]
 
     # --- 图1: 轴向风险分布概览图 ---

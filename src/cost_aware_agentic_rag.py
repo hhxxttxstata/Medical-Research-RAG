@@ -345,7 +345,7 @@ class CostAwareAgenticRAG:
             if m:
                 data = json.loads(m.group())
                 if data.get("decomposed"):
-                    plan = []
+                    plan: list[dict] = []
                     for item in data.get("plan", []):
                         plan.append(
                             {
@@ -402,7 +402,7 @@ class CostAwareAgenticRAG:
                 return action, str(data.get("reason", "")), False
         except Exception:
             pass
-        return None, None, True  # fallback 标记
+        return "", "", True  # fallback 标记
 
     # ══════════════════════════════════════════════════
     #  主循环
@@ -479,9 +479,9 @@ class CostAwareAgenticRAG:
             else:  # RETRIEVE
                 target = grade.get("target_hop")
                 if target and state.hops:
-                    hop = next((h for h in state.hops if h.hop_id == target["hop_id"]), None)
-                    if hop:
-                        self._targeted_retrieve(state, hop, fetch_k)
+                    found_hop = next((h for h in state.hops if h.hop_id == target["hop_id"]), None)
+                    if found_hop:
+                        self._targeted_retrieve(state, found_hop, fetch_k)
                         obs.retrieval_calls += 1
                     else:
                         more = self.retriever._hybrid_retrieve(target.get("query", question), fetch_k=fetch_k)
