@@ -33,7 +33,9 @@
 **Step 13 因果结论迁移情况**：
 - Harm=0 / False Abstain=0 / OOD 拒答 → 全部泛化 ✅
 - Hop Recall / Completeness 与 v1 持平（holdout 里 V0 本身命中率高，无 rescue market）
-- Policy Action Acc / Decomp Success → v2 显著优于 v1，且这是**决策质量**层面的泛化 ✅
+- Policy Action Acc / Decomp Success → v2 优于 v1（7/16→11/16，4 vs 0）。
+  ⚠️ 口径：16 题样本下 McNemar 配对检验 χ²≈2.25 < 3.84（p>0.05），差异**不构成统计显著性**；
+  定位为**工程验收 gate**（一次性泛化验收 + 过程纪律），而非科研显著性结论。
 
 ### 冻结清单
 ```

@@ -22,7 +22,7 @@ class RAGLogger:
         self.stats_file = os.path.join(self.log_dir, f"stats_{self.date_str}.json")
 
         # 当日统计
-        self._stats = {
+        self._stats: dict[str, Any] = {
             "date": self.date_str,
             "total_queries": 0,
             "success_count": 0,

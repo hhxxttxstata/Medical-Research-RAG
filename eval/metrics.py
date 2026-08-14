@@ -36,12 +36,34 @@ def hit_rate(results: list[dict[str, Any]]) -> float:
     return hits / len(exact)
 
 
+def _is_target_match(filename: str, target: str) -> bool:
+    """filename 是否命中 expected_doc（兼容带/不带扩展名两种形式）"""
+    if not filename:
+        return False
+    return filename == target or filename == target.rsplit(".", 1)[0]
+
+
+def _hit_rank(r: dict[str, Any]) -> int | None:
+    """expected_doc 在检索结果中的首次出现位置（从 1 开始），未命中返回 None
+
+    与 evaluate_system.py 的 expected_hit 判定保持同一语义：
+    expected_doc 带扩展名（.md/.txt），sources 的 filename 不带，
+    故匹配时同时比较「完整名」与「去扩展名」两种形式。
+    """
+    target = r.get("expected_doc")
+    if not target:
+        return None
+    for i, s in enumerate(r.get("sources", []), start=1):
+        if _is_target_match((s.get("metadata") or {}).get("filename", ""), target):
+            return i
+    return None
+
+
 def mrr(results: list[dict[str, Any]]) -> float:
     """Mean Reciprocal Rank（平均倒数排名）
 
-    对每道 exact_match 题，计算 1/rank，
-    rank 是 expected_doc 在检索结果中首次出现的位置（从 1 开始）。
-    未命中则 rank = ∞（贡献 0）。
+    对每道 exact_match 题，用 expected_doc 在检索结果中的真实 rank
+    计算 1/rank，再对全部题目取平均；未命中则贡献 0。
     """
     exact = [r for r in results if r.get("category") == "exact_match" and r.get("expected_doc")]
     if not exact:
@@ -49,56 +71,51 @@ def mrr(results: list[dict[str, Any]]) -> float:
 
     total_rr = 0.0
     for r in exact:
-        if r.get("expected_hit"):
-            total_rr += 1.0  # 近似：命中的假设 rank=1
+        rank = _hit_rank(r)
+        if rank is not None:
+            total_rr += 1.0 / rank
     return total_rr / len(exact)
 
 
 def ndcg_at_k(results: list[dict[str, Any]], k: int = 5) -> float:
     """NDCG@K（归一化折损累积增益）
 
-    简化实现：对 exact_match 类，命中 expected_doc 算 gain=1。
-    在评估中可以扩展为多级相关性（如：精确匹配=2，跨文档=1，不相关=0）。
+    每题只有一个相关文档（expected_doc），理想排序下它排在首位，
+    故 IDCG@K = 1.0；DCG@K = Σ gain_i / log2(i+1)。
     """
     exact = [r for r in results if r.get("category") == "exact_match" and r.get("expected_doc")]
     if not exact:
         return 0.0
 
-    dcg = 0.0
-    idcg = 0.0
-    for i, r in enumerate(exact):
-        rank = i + 1
-        gain = 1.0 if r.get("expected_hit") else 0.0
-        if rank == 1:
-            dcg += gain
-        else:
-            dcg += gain / math.log2(rank)
-
-        ideal_gain = 1.0
-        if rank == 1:
-            idcg += ideal_gain
-        else:
-            idcg += ideal_gain / math.log2(rank)
-
-    return dcg / idcg if idcg > 0 else 0.0
+    total_dcg = 0.0
+    for r in exact:
+        target = r["expected_doc"]
+        dcg = 0.0
+        hit = False
+        for i, s in enumerate(r.get("sources", [])[:k], start=1):
+            if not hit and _is_target_match((s.get("metadata") or {}).get("filename", ""), target):
+                hit = True
+                dcg += 1.0 / math.log2(i + 1)  # 仅首次出现计 gain（rank1 时 log2(2)=1，无折扣）
+        total_dcg += dcg  # IDCG@K = 1.0（唯一相关文档）
+    return total_dcg / len(exact)
 
 
 def average_precision(results: list[dict[str, Any]]) -> float:
     """平均准确率（AP）
 
-    对 exact_match 类，计算 acc@1, acc@2, ... acc@N 的平均值。
+    对每道 exact_match 题，AP = Σ(P@k × rel_k) / num_relevant。
+    每题只有一个相关文档 → 命中时 AP = 1/rank，未命中为 0。
     """
     exact = [r for r in results if r.get("category") == "exact_match" and r.get("expected_doc")]
     if not exact:
         return 0.0
 
     total = 0.0
-    hits = 0
-    for i, r in enumerate(exact):
-        if r.get("expected_hit"):
-            hits += 1
-            total += hits / (i + 1)
-    return total / len(exact) if exact else 0.0
+    for r in exact:
+        rank = _hit_rank(r)
+        if rank is not None:
+            total += 1.0 / rank
+    return total / len(exact)
 
 
 # ══════════════════════════════════════════════════

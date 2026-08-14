@@ -1,0 +1,629 @@
+{
+  "timestamp": "20260812_142745",
+  "note": "Step 13.5 one-shot holdout validation. Do NOT tune v2 on these 16 cases.",
+  "v1": {
+    "final_answer_accuracy": "6/16",
+    "evidence_recall": 0.812,
+    "hop_recall": 0.812,
+    "completeness": 0.812,
+    "final_rescue": 0,
+    "harm": 0,
+    "net_utility": 0,
+    "ood_reject": "2/2",
+    "false_abstain": "0/14",
+    "policy_action_accuracy": "7/16",
+    "decomposition_success": 0,
+    "retry_recovery": 0,
+    "unnecessary_action_rate": "0/14",
+    "avg_iterations": 1.0
+  },
+  "v2": {
+    "final_answer_accuracy": "6/16",
+    "evidence_recall": 0.812,
+    "hop_recall": 0.812,
+    "completeness": 0.812,
+    "final_rescue": 0,
+    "harm": 0,
+    "net_utility": 0,
+    "ood_reject": "2/2",
+    "false_abstain": "0/14",
+    "policy_action_accuracy": "11/16",
+    "decomposition_success": 4,
+    "retry_recovery": 0,
+    "unnecessary_action_rate": "0/14",
+    "avg_iterations": 1.38
+  },
+  "rescue_market": {
+    "answerable": 14,
+    "v0_already_hit": 13,
+    "v0_miss": 1
+  },
+  "operational_failure_v2": 0,
+  "details_v1": [
+    {
+      "id": "ho_easy_01",
+      "type": "easy_single_hop",
+      "question": "肺结节检测方案中，体素间距归一化将图像重采样至什么分辨率？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": true,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_easy_02",
+      "type": "easy_single_hop",
+      "question": "U-Net 解码器最后一层使用什么卷积将特征映射到目标类别数？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": true,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_easy_03",
+      "type": "easy_single_hop",
+      "question": "sPESI 评分中，动脉血氧饱和度低于多少记 1 分？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": true,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_hard_01",
+      "type": "hard_single_hop",
+      "question": "模型在 SNR=10dB 噪声下的敏感度下降了多少？SNR=20dB 时呢？",
+      "v0_hit": false,
+      "v1_hit": false,
+      "v0_evidence_recall": 0.0,
+      "v1_evidence_recall": 0.0,
+      "hop_recall": 0.0,
+      "completeness": 0.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "none"
+    },
+    {
+      "id": "ho_hard_02",
+      "type": "hard_single_hop",
+      "question": "肺结节检测模型在第一阶段预训练和第二阶段微调分别使用什么优化器？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": true,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_hard_03",
+      "type": "hard_single_hop",
+      "question": "内部测试集的 AUC 是多少？外部验证集呢？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_multi_01",
+      "type": "multi_hop_composition",
+      "question": "U-Net 在 ISBI 2012 细胞分割挑战赛的 PhC-U373 数据集上达到多少 IoU？U-Net 创新点是什么？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_multi_02",
+      "type": "multi_hop_composition",
+      "question": "肺栓塞诊断流程中，临床评估后 D-二聚体阴性可以做什么结论？D-二聚体阳性后首选什么确诊检查？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_comp_01",
+      "type": "comparison",
+      "question": "Transformer 的编码器和解码器各由多少层堆叠而成？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_comp_02",
+      "type": "comparison",
+      "question": "内部测试集和外部验证集的敏感度分别是多少？内部测试集的特异度呢？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_constraint_01",
+      "type": "constraint_query",
+      "question": "针对医学图像标注数据有限的问题，U-Net 论文采用了哪些数据增强方法？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": true,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_constraint_02",
+      "type": "constraint_query",
+      "question": "对于临床评估高度可能的肺栓塞患者，指南推荐直接进行什么检查以明确诊断？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": true,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_partial_01",
+      "type": "partial_evidence",
+      "question": "三线性插值和三三次样条插值在体素重采样中各自的优缺点是什么？什么场景选择哪个？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_partial_02",
+      "type": "partial_evidence",
+      "question": "模型在外部验证集上的表现相比内部测试集如何？跨设备泛化中哪个设备表现最好？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_ood_01",
+      "type": "unsupported_ood",
+      "question": "如何在 PostgreSQL 中实现物化视图的增量刷新？",
+      "v0_hit": false,
+      "v1_hit": false,
+      "v0_evidence_recall": 0.0,
+      "v1_evidence_recall": 0.0,
+      "hop_recall": 0.0,
+      "completeness": 0.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "ABSTAIN"
+      ],
+      "abstained": true,
+      "class": "ood"
+    },
+    {
+      "id": "ho_ood_02",
+      "type": "unsupported_ood",
+      "question": "2025 年诺贝尔生理学或医学奖颁给了哪位科学家？",
+      "v0_hit": false,
+      "v1_hit": false,
+      "v0_evidence_recall": 0.0,
+      "v1_evidence_recall": 0.0,
+      "hop_recall": 0.0,
+      "completeness": 0.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "ABSTAIN"
+      ],
+      "abstained": true,
+      "class": "ood"
+    }
+  ],
+  "details_v2": [
+    {
+      "id": "ho_easy_01",
+      "type": "easy_single_hop",
+      "question": "肺结节检测方案中，体素间距归一化将图像重采样至什么分辨率？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": true,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_easy_02",
+      "type": "easy_single_hop",
+      "question": "U-Net 解码器最后一层使用什么卷积将特征映射到目标类别数？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": true,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_easy_03",
+      "type": "easy_single_hop",
+      "question": "sPESI 评分中，动脉血氧饱和度低于多少记 1 分？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": true,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_hard_01",
+      "type": "hard_single_hop",
+      "question": "模型在 SNR=10dB 噪声下的敏感度下降了多少？SNR=20dB 时呢？",
+      "v0_hit": false,
+      "v1_hit": false,
+      "v0_evidence_recall": 0.0,
+      "v1_evidence_recall": 0.0,
+      "hop_recall": 0.0,
+      "completeness": 0.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "none"
+    },
+    {
+      "id": "ho_hard_02",
+      "type": "hard_single_hop",
+      "question": "肺结节检测模型在第一阶段预训练和第二阶段微调分别使用什么优化器？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": true,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_hard_03",
+      "type": "hard_single_hop",
+      "question": "内部测试集的 AUC 是多少？外部验证集呢？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_multi_01",
+      "type": "multi_hop_composition",
+      "question": "U-Net 在 ISBI 2012 细胞分割挑战赛的 PhC-U373 数据集上达到多少 IoU？U-Net 创新点是什么？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_multi_02",
+      "type": "multi_hop_composition",
+      "question": "肺栓塞诊断流程中，临床评估后 D-二聚体阴性可以做什么结论？D-二聚体阳性后首选什么确诊检查？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_comp_01",
+      "type": "comparison",
+      "question": "Transformer 的编码器和解码器各由多少层堆叠而成？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_comp_02",
+      "type": "comparison",
+      "question": "内部测试集和外部验证集的敏感度分别是多少？内部测试集的特异度呢？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_constraint_01",
+      "type": "constraint_query",
+      "question": "针对医学图像标注数据有限的问题，U-Net 论文采用了哪些数据增强方法？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": true,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_constraint_02",
+      "type": "constraint_query",
+      "question": "对于临床评估高度可能的肺栓塞患者，指南推荐直接进行什么检查以明确诊断？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": true,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_partial_01",
+      "type": "partial_evidence",
+      "question": "三线性插值和三三次样条插值在体素重采样中各自的优缺点是什么？什么场景选择哪个？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_partial_02",
+      "type": "partial_evidence",
+      "question": "模型在外部验证集上的表现相比内部测试集如何？跨设备泛化中哪个设备表现最好？",
+      "v0_hit": true,
+      "v1_hit": true,
+      "v0_evidence_recall": 1.0,
+      "v1_evidence_recall": 1.0,
+      "hop_recall": 1.0,
+      "completeness": 1.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "abstained": false,
+      "class": "both"
+    },
+    {
+      "id": "ho_ood_01",
+      "type": "unsupported_ood",
+      "question": "如何在 PostgreSQL 中实现物化视图的增量刷新？",
+      "v0_hit": false,
+      "v1_hit": false,
+      "v0_evidence_recall": 0.0,
+      "v1_evidence_recall": 0.0,
+      "hop_recall": 0.0,
+      "completeness": 0.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "RETRIEVE",
+        "ABSTAIN"
+      ],
+      "abstained": true,
+      "class": "ood"
+    },
+    {
+      "id": "ho_ood_02",
+      "type": "unsupported_ood",
+      "question": "2025 年诺贝尔生理学或医学奖颁给了哪位科学家？",
+      "v0_hit": false,
+      "v1_hit": false,
+      "v0_evidence_recall": 0.0,
+      "v1_evidence_recall": 0.0,
+      "hop_recall": 0.0,
+      "completeness": 0.0,
+      "final_answer_accuracy": false,
+      "route": [
+        "RETRIEVE",
+        "RETRIEVE",
+        "ABSTAIN"
+      ],
+      "abstained": true,
+      "class": "ood"
+    }
+  ],
+  "elapsed": 7106.3
+}

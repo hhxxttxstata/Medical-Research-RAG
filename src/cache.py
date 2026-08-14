@@ -96,7 +96,7 @@ class LRUCache:
 
     def set(self, key: str, value: Any, ttl: int | None = None) -> None:
         with self._get_lock():
-            expires = 0
+            expires: float = 0
             ttl = ttl if ttl is not None else self._default_ttl
             if ttl:
                 expires = time.time() + ttl

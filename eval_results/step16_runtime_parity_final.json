@@ -1,0 +1,339 @@
+{
+  "timestamp": "20260813_230000",
+  "note": "Step 16: LangGraph Runtime Parity（干净重跑，6 批独占串行，18 题，同一 input/index/prompt/budget）",
+  "parity": {
+    "route_exact_match": "18/18",
+    "er_match": "18/18",
+    "terminal_action_match": "18/18",
+    "answer_text_match": "2/18 (LLM 生成温度波动，终局拒答状态全一致)",
+    "capability_diff": "无（逐批能力指标全部一致）"
+  },
+  "details": [
+    {
+      "id": "bh_comp_01",
+      "type": "comparison",
+      "route_equal": true,
+      "answer_equal": false,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "custom_er": 1.0,
+      "lg_er": 1.0
+    },
+    {
+      "id": "bh_comp_02",
+      "type": "comparison",
+      "route_equal": true,
+      "answer_equal": false,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "custom_er": 1.0,
+      "lg_er": 1.0
+    },
+    {
+      "id": "bh_comp_03",
+      "type": "comparison",
+      "route_equal": true,
+      "answer_equal": false,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "custom_er": 1.0,
+      "lg_er": 1.0
+    },
+    {
+      "id": "bh_constraint_01",
+      "type": "constraint_query",
+      "route_equal": true,
+      "answer_equal": false,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "custom_er": 1.0,
+      "lg_er": 1.0
+    },
+    {
+      "id": "bh_constraint_02",
+      "type": "constraint_query",
+      "route_equal": true,
+      "answer_equal": false,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "custom_er": 1.0,
+      "lg_er": 1.0
+    },
+    {
+      "id": "bh_easy_01",
+      "type": "easy_single_hop",
+      "route_equal": true,
+      "answer_equal": false,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "custom_er": 1.0,
+      "lg_er": 1.0
+    },
+    {
+      "id": "bh_easy_02",
+      "type": "easy_single_hop",
+      "route_equal": true,
+      "answer_equal": false,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "custom_er": 1.0,
+      "lg_er": 1.0
+    },
+    {
+      "id": "bh_easy_03",
+      "type": "easy_single_hop",
+      "route_equal": true,
+      "answer_equal": false,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "custom_er": 1.0,
+      "lg_er": 1.0
+    },
+    {
+      "id": "bh_hard_01",
+      "type": "hard_single_hop",
+      "route_equal": true,
+      "answer_equal": false,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "custom_er": 1.0,
+      "lg_er": 1.0
+    },
+    {
+      "id": "bh_hard_02",
+      "type": "hard_single_hop",
+      "route_equal": true,
+      "answer_equal": false,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "custom_er": 1.0,
+      "lg_er": 1.0
+    },
+    {
+      "id": "bh_hard_03",
+      "type": "hard_single_hop",
+      "route_equal": true,
+      "answer_equal": false,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
+      "custom_er": 1.0,
+      "lg_er": 1.0
+    },
+    {
+      "id": "bh_multi_01",
+      "type": "multi_hop_composition",
+      "route_equal": true,
+      "answer_equal": false,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "custom_er": 1.0,
+      "lg_er": 1.0
+    },
+    {
+      "id": "bh_multi_02",
+      "type": "multi_hop_composition",
+      "route_equal": true,
+      "answer_equal": false,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "custom_er": 1.0,
+      "lg_er": 1.0
+    },
+    {
+      "id": "bh_multi_03",
+      "type": "multi_hop_composition",
+      "route_equal": true,
+      "answer_equal": false,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "custom_er": 1.0,
+      "lg_er": 1.0
+    },
+    {
+      "id": "bh_ood_01",
+      "type": "unsupported_ood",
+      "route_equal": true,
+      "answer_equal": true,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "RETRIEVE",
+        "ABSTAIN"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "RETRIEVE",
+        "ABSTAIN"
+      ],
+      "custom_er": 0.0,
+      "lg_er": 0.0
+    },
+    {
+      "id": "bh_ood_02",
+      "type": "unsupported_ood",
+      "route_equal": true,
+      "answer_equal": true,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "RETRIEVE",
+        "ABSTAIN"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "RETRIEVE",
+        "ABSTAIN"
+      ],
+      "custom_er": 0.0,
+      "lg_er": 0.0
+    },
+    {
+      "id": "bh_partial_01",
+      "type": "partial_evidence",
+      "route_equal": true,
+      "answer_equal": false,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "custom_er": 1.0,
+      "lg_er": 1.0
+    },
+    {
+      "id": "bh_partial_02",
+      "type": "partial_evidence",
+      "route_equal": true,
+      "answer_equal": false,
+      "er_equal": true,
+      "custom_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "lg_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "ACCEPT"
+      ],
+      "custom_er": 1.0,
+      "lg_er": 1.0
+    }
+  ]
+}

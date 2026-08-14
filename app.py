@@ -25,8 +25,8 @@ from datetime import datetime
 from pathlib import Path
 
 if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -41,7 +41,7 @@ try:
 
     _HAS_OTEL = True
 except ImportError:
-    trace = None
+    trace = None  # type: ignore[assignment]
     FastAPIInstrumentor = None
     _HAS_OTEL = False
 
@@ -175,7 +175,7 @@ if _HAS_OTEL:
     _FastAPIInstrumentor.instrument_app(app)
     tracer = trace.get_tracer(__name__)
 else:
-    tracer = None
+    tracer = None  # type: ignore[assignment]
 
 # ── 生命周期 ──────────────────────────────────────────
 

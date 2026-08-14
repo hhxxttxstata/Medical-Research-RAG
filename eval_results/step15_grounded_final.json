@@ -1,0 +1,640 @@
+{
+  "timestamp": "20260813_171000",
+  "note": "Step 15: End-to-End Grounded Answer Eval (frozen v2, 18 题, 合并 6 批次)",
+  "metrics": {
+    "Answer Correctness": "4/18",
+    "Groundedness": 0.993,
+    "Evidence/Citation Support": 0.889,
+    "Completeness": 0.889,
+    "Unsupported Claim Rate": "1/74 = 0.014",
+    "Correct Abstention": "2/2",
+    "False Abstain": "1/16",
+    "Citation Valid Rate": "17/18"
+  },
+  "details": [
+    {
+      "id": "bh_comp_01",
+      "type": "comparison",
+      "question": "U-Net 的编码器和解码器分别由多少个块组成？",
+      "answer": "```json\n{\n  \"diagnosis\": \"U-Net的编码器和解码器分别由4个下采样块和4个上采样块组成\",\n  \"confidence\": \"高\",\n  \"evidence\": [\n    \"编码器由4个下采样块组成，每个块包含两个3×3卷积层（ReLU激活）和一个2×2最大池化层 [1]\",\n    \"解码器对称于编码器，由4个上采样块组成，每个块首先进行2×2转置卷积上采样 [2]\"\n  ],\n  \"suggestion\": \"无需进一步检查，该信息可直接用于理解U-Net架构设计\",\n  \"sources\": [\"03_U-Net医学图像分割论文笔记\"],\n  \"uncertainty\": \"无\"\n}\n```",
+      "abstained": false,
+      "answer_correct": false,
+      "claims": [
+        {
+          "text": "U-Net的编码器和解码器分别由4个下采样块和4个上采样块组成",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "编码器由4个下采样块组成，每个块包含两个3×3卷积层（ReLU激活）和一个2×2最大池化层",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "解码器对称于编码器，由4个上采样块组成，每个块首先进行2×2转置卷积上采样",
+          "status": "supported",
+          "evidence_idx": []
+        }
+      ],
+      "evidence_recall": 1.0,
+      "completeness": 1.0,
+      "citation_valid": true,
+      "mode": "llm"
+    },
+    {
+      "id": "bh_comp_02",
+      "type": "comparison",
+      "question": "急性肺栓塞与慢性肺栓塞在影像学上如何鉴别？急性血栓的征象有哪些？",
+      "answer": "```json\n{\n  \"diagnosis\": \"急性肺栓塞与慢性肺栓塞在CTPA影像上可通过血栓形态、管径变化及血管壁特征进行鉴别，急性血栓的典型征象包括马鞍征、环征/轨道征及与血管壁呈锐角的附壁血栓。\",\n  \"confidence\": \"高\",\n  \"evidence\": [\n    \"新鲜血栓常见于急性期，如骑跨于主肺动脉分叉的'马鞍征'、呈环形或轨道样填充的'环征/轨道征'，或与血管壁呈锐角的附壁血栓 [1]\",\n    \"陈旧或慢性血栓常表现为钝角的偏心性附壁充盈缺损、血管壁不规则、管腔内的纤维'蹼样征'，以及血管管径的狭窄、变细甚至闭塞 [1]\",\n    \"急性闭塞时，病变血管管径可能正常或略增粗；而慢性闭塞则常导致血管管径显著变细，小于同级正常血管 [1]\",\n    \"急性肺栓塞若未及时或充分治疗，血栓可能发生机化、纤维化，转化为慢性血栓栓塞性肺动脉高压（CTEPH），逐渐导致肺动脉管壁增厚、管腔狭窄或闭塞 [5]\"\n  ],\n  \"suggestion\": \"建议在PACS系统中同步查看轴位、冠状位和矢状位图像，以便更清晰地区分急性'轨道征'与慢性'蹼样征' [",
+      "abstained": false,
+      "answer_correct": false,
+      "claims": [
+        {
+          "text": "急性肺栓塞与慢性肺栓塞在CTPA影像上可通过血栓形态、管径变化及血管壁特征进行鉴别",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "急性血栓的典型征象包括马鞍征、环征/轨道征及与血管壁呈锐角的附壁血栓",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "新鲜血栓常见于急性期，如骑跨于主肺动脉分叉的'马鞍征'、呈环形或轨道样填充的'环征/轨道征'，或与血管壁呈锐角的附壁血栓",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "陈旧或慢性血栓常表现为钝角的偏心性附壁充盈缺损、血管壁不规则、管腔内的纤维'蹼样征'，以及血管管径的狭窄、变细甚至闭塞",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "急性闭塞时，病变血管管径可能正常或略增粗；而慢性闭塞则常导致血管管径显著变细，小于同级正常血管",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "急性肺栓塞若未及时或充分治疗，血栓可能发生机化、纤维化，转化为慢性血栓栓塞性肺动脉高压（CTEPH），逐渐导致肺动脉管壁增厚、管腔狭窄或闭塞",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "建议在PACS系统中同步查看轴位、冠状位和矢状位图像，以便更清晰地区分急性'轨道征'与慢性'蹼样征'",
+          "status": "supported",
+          "evidence_idx": []
+        }
+      ],
+      "evidence_recall": 1.0,
+      "completeness": 1.0,
+      "citation_valid": true,
+      "mode": "llm"
+    },
+    {
+      "id": "bh_comp_03",
+      "type": "comparison",
+      "question": "内部测试集和外部验证集的特异度分别是多少？哪个数据集的特异度更高？",
+      "answer": "```json\n{\n  \"diagnosis\": \"内部测试集的特异度为91.8%，外部验证集的特异度为88.5%，内部测试集的特异度更高\",\n  \"confidence\": \"高\",\n  \"evidence\": [\n    \"内部测试集的特异度为91.8% [1]\",\n    \"外部验证集的特异度为88.5% [1]\",\n    \"内部测试集特异度（91.8%）高于外部验证集（88.5%），两者相差3.3个百分点 [1]\"\n  ],\n  \"suggestion\": \"外部验证集特异度略低，可能与跨设备、跨人群的差异有关，建议关注模型在外部环境中的假阳性率变化\",\n  \"sources\": [\"08_AI模型评估与验证报告\"],\n  \"uncertainty\": \"无\"\n}\n```",
+      "abstained": false,
+      "answer_correct": false,
+      "claims": [
+        {
+          "text": "内部测试集的特异度为91.8%",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "外部验证集的特异度为88.5%",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "内部测试集的特异度更高",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "两者相差3.3个百分点",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "外部验证集特异度略低，可能与跨设备、跨人群的差异有关",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "建议关注模型在外部环境中的假阳性率变化",
+          "status": "supported",
+          "evidence_idx": []
+        }
+      ],
+      "evidence_recall": 1.0,
+      "completeness": 1.0,
+      "citation_valid": true,
+      "mode": "llm"
+    },
+    {
+      "id": "bh_constraint_01",
+      "type": "constraint_query",
+      "question": "肺结节检测方案中，针对正负样本不平衡问题，训练阶段引入了什么损失函数？",
+      "answer": "```json\n{\n  \"diagnosis\": \"肺结节检测方案中，针对正负样本不平衡问题，训练阶段引入了Focal Loss损失函数\",\n  \"confidence\": \"高\",\n  \"evidence\": [\n    \"训练过程分为两个阶段，第二阶段在目标域数据上进行微调时，引入Focal Loss解决正负样本不平衡问题 [1]\"\n  ],\n  \"suggestion\": \"无需进一步检查，该信息已明确。如需了解Focal Loss的具体参数设置，可查阅相关技术文档。\",\n  \"sources\": [\"02_CT影像肺结节检测技术方案\"],\n  \"uncertainty\": \"参考文档未提供Focal Loss的具体参数（如gamma、alpha值）设置\"\n}\n```",
+      "abstained": false,
+      "answer_correct": true,
+      "claims": [
+        {
+          "text": "肺结节检测方案中，针对正负样本不平衡问题，训练阶段引入了Focal Loss损失函数",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "训练过程分为两个阶段，第二阶段在目标域数据上进行微调时，引入Focal Loss解决正负样本不平衡问题",
+          "status": "supported",
+          "evidence_idx": []
+        }
+      ],
+      "evidence_recall": 1.0,
+      "completeness": 1.0,
+      "citation_valid": true,
+      "mode": "llm"
+    },
+    {
+      "id": "bh_constraint_02",
+      "type": "constraint_query",
+      "question": "在 CTPA 有禁忌证（如造影剂过敏）时，肺栓塞确诊应选择哪种替代检查？",
+      "answer": "```json\n{\n  \"diagnosis\": \"当CTPA有禁忌证（如造影剂过敏）时，肺栓塞确诊应选择核素肺通气/灌注（V/Q）显像作为替代检查\",\n  \"confidence\": \"高\",\n  \"evidence\": [\n    \"当患者有CTPA禁忌证（如造影剂过敏、严重肾功能不全）时，可选择核素肺通气/灌注（V/Q）显像 [1]\"\n  ],\n  \"suggestion\": \"建议在临床高度怀疑肺栓塞但存在CTPA禁忌证时，及时安排V/Q显像检查，并结合临床评估结果综合判断\",\n  \"sources\": [\"诊断流程指南：从怀疑到确诊\"],\n  \"uncertainty\": \"参考文档未提供V/Q显像的具体诊断效能数据（如敏感性、特异性），也未提及除V/Q显像外是否有其他替代检查方案\"\n}\n```",
+      "abstained": false,
+      "answer_correct": true,
+      "claims": [
+        {
+          "text": "当CTPA有禁忌证（如造影剂过敏）时，肺栓塞确诊应选择核素肺通气/灌注（V/Q）显像作为替代检查",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "当患者有CTPA禁忌证（如造影剂过敏、严重肾功能不全）时，可选择核素肺通气/灌注（V/Q）显像",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "建议在临床高度怀疑肺栓塞但存在CTPA禁忌证时，及时安排V/Q显像检查，并结合临床评估结果综合判断",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "参考文档未提供V/Q显像的具体诊断效能数据（如敏感性、特异性），也未提及除V/Q显像外是否有其他替代检查方案",
+          "status": "supported",
+          "evidence_idx": []
+        }
+      ],
+      "evidence_recall": 1.0,
+      "completeness": 1.0,
+      "citation_valid": true,
+      "mode": "llm"
+    },
+    {
+      "id": "bh_easy_01",
+      "type": "easy_single_hop",
+      "question": "肺结节检测方案中，LUNA16 数据集包含多少例低剂量胸部 CT 扫描图像？",
+      "answer": "```json\n{\n  \"diagnosis\": \"LUNA16 数据集包含 888 例低剂量胸部 CT 扫描图像\",\n  \"confidence\": \"高\",\n  \"evidence\": [\n    \"LUNA16（Lung Nodule Analysis 2016）公开数据集，包含 888 例低剂量胸部 CT 扫描图像，共计超过 36 万个标注结节 [1]\"\n  ],\n  \"suggestion\": \"该数据集可用于肺结节检测模型的训练与验证，建议结合预处理流程（窗宽窗位调整、体素间距归一化等）使用 [1]\",\n  \"sources\": [\"02_CT影像肺结节检测技术方案\"],\n  \"uncertainty\": \"无\"\n}\n```",
+      "abstained": false,
+      "answer_correct": true,
+      "claims": [
+        {
+          "text": "LUNA16 数据集包含 888 例低剂量胸部 CT 扫描图像",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "共计超过 36 万个标注结节",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "该数据集可用于肺结节检测模型的训练与验证",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "建议结合预处理流程（窗宽窗位调整、体素间距归一化等）使用",
+          "status": "supported",
+          "evidence_idx": []
+        }
+      ],
+      "evidence_recall": 1.0,
+      "completeness": 1.0,
+      "citation_valid": true,
+      "mode": "llm"
+    },
+    {
+      "id": "bh_easy_02",
+      "type": "easy_single_hop",
+      "question": "U-Net 在 PhC-U373 数据集上达到多少 IoU？",
+      "answer": "```json\n{\n  \"diagnosis\": \"U-Net 在 PhC-U373 数据集上达到 92.5% 的 IoU\",\n  \"confidence\": \"高\",\n  \"evidence\": [\n    \"在 ISBI 2012 细胞分割挑战赛上，U-Net 在 PhC-U373 数据集上达到 92.5% 的 IoU [1]\"\n  ],\n  \"suggestion\": \"无需进一步操作，该数据为论文中明确报告的结果\",\n  \"sources\": [\"03_U-Net医学图像分割论文笔记\"],\n  \"uncertainty\": \"无\"\n}\n```",
+      "abstained": false,
+      "answer_correct": true,
+      "claims": [
+        {
+          "text": "U-Net 在 PhC-U373 数据集上达到 92.5% 的 IoU",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "该数据为论文中明确报告的结果",
+          "status": "supported",
+          "evidence_idx": []
+        }
+      ],
+      "evidence_recall": 1.0,
+      "completeness": 1.0,
+      "citation_valid": true,
+      "mode": "llm"
+    },
+    {
+      "id": "bh_easy_03",
+      "type": "easy_single_hop",
+      "question": "CT 影像预处理中，肺窗的窗宽和窗位分别设置为多少？",
+      "answer": "```json\n{\n  \"diagnosis\": \"CT影像预处理中，肺窗的窗宽通常设置为1500-2000 HU，窗位设置为-450至-800 HU\",\n  \"confidence\": \"高\",\n  \"evidence\": [\n    \"肺窗典型窗宽为1500-2000 HU，窗位为-450至-800 HU，用于清晰显示肺内结构、气道和磨玻璃影 [2]\",\n    \"在肺结节检测方案中，肺窗设置采用窗宽1500 HU，窗位-600 HU [1]\",\n    \"在肺栓塞CTPA研究中，肺窗窗宽设置为1515 HU，窗位设置为-480 HU [3][8]\"\n  ],\n  \"suggestion\": \"具体窗宽窗位可根据临床显示需求在标准范围内微调，AI模型预处理时建议同时进行HU归一化处理以保持数据一致性\",\n  \"sources\": [\"CT 窗宽窗位设置原理\", \"02_CT影像肺结节检测技术方案\", \"基于Res2Net注意力机制网络智能检测CT肺动脉成像急性肺动脉栓塞_李曼\"],\n  \"uncertainty\": \"不同临床场景和AI模型可能采用略有差异的窗宽窗位值，但均在标准肺",
+      "abstained": false,
+      "answer_correct": false,
+      "claims": [
+        {
+          "text": "肺窗的窗宽通常设置为1500-2000 HU",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "窗位设置为-450至-800 HU",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "肺窗典型窗宽为1500-2000 HU，窗位为-450至-800 HU，用于清晰显示肺内结构、气道和磨玻璃影",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "在肺结节检测方案中，肺窗设置采用窗宽1500 HU，窗位-600 HU",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "在肺栓塞CTPA研究中，肺窗窗宽设置为1515 HU，窗位设置为-480 HU",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "具体窗宽窗位可根据临床显示需求在标准范围内微调",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "AI模型预处理时建议同时进行HU归一化处理以保持数据一致性",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "不同临床场景和AI模型可能采用略有差异的窗宽窗位值，但均在标准肺窗范围内",
+          "status": "supported",
+          "evidence_idx": []
+        }
+      ],
+      "evidence_recall": 1.0,
+      "completeness": 1.0,
+      "citation_valid": false,
+      "mode": "llm"
+    },
+    {
+      "id": "bh_hard_01",
+      "type": "hard_single_hop",
+      "question": "模型在外部验证集上的敏感度相比内部测试集下降了多少个百分点？",
+      "answer": "```json\n{\n  \"diagnosis\": \"模型在外部验证集上的敏感度相比内部测试集下降了2.6个百分点\",\n  \"confidence\": \"高\",\n  \"evidence\": [\n    \"内部测试集敏感度为96.3%，外部验证集敏感度为93.7% [1][2]\",\n    \"96.3% - 93.7% = 2.6% [1][2]\"\n  ],\n  \"suggestion\": \"外部验证集敏感度下降幅度较小，表明模型跨设备泛化能力良好，建议继续关注外部验证集上特异度（88.5%）和假阳性率（2.4/scan）的变化趋势\",\n  \"sources\": [\"08_AI模型评估与验证报告\"],\n  \"uncertainty\": \"无\"\n}\n```",
+      "abstained": false,
+      "answer_correct": false,
+      "claims": [
+        {
+          "text": "模型在外部验证集上的敏感度相比内部测试集下降了2.6个百分点",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "内部测试集敏感度为96.3%，外部验证集敏感度为93.7%",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "96.3% - 93.7% = 2.6%",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "外部验证集敏感度下降幅度较小，表明模型跨设备泛化能力良好",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "建议继续关注外部验证集上特异度（88.5%）和假阳性率（2.4/scan）的变化趋势",
+          "status": "supported",
+          "evidence_idx": []
+        }
+      ],
+      "evidence_recall": 1.0,
+      "completeness": 1.0,
+      "citation_valid": true,
+      "mode": "llm"
+    },
+    {
+      "id": "bh_hard_02",
+      "type": "hard_single_hop",
+      "question": "训练过程中，第一阶段预训练和第二阶段微调的学习率分别是什么？",
+      "answer": "```json\n{\n  \"diagnosis\": \"第一阶段预训练初始学习率为0.001，第二阶段微调学习率降至0.0001\",\n  \"confidence\": \"高\",\n  \"evidence\": [\n    \"第一阶段：使用 LUNA16 全部数据进行预训练，初始学习率 0.001，使用 Adam 优化器 [1]\",\n    \"第二阶段：在目标域数据上进行微调，学习率降至 0.0001，引入 Focal Loss 解决正负样本不平衡问题 [1]\"\n  ],\n  \"suggestion\": \"如需复现该训练流程，请严格按照上述两阶段学习率设置进行实验\",\n  \"sources\": [\"02_CT影像肺结节检测技术方案\"],\n  \"uncertainty\": \"无\"\n}\n```",
+      "abstained": false,
+      "answer_correct": false,
+      "claims": [
+        {
+          "text": "第一阶段预训练初始学习率为0.001",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "第二阶段微调学习率降至0.0001",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "第一阶段使用 LUNA16 全部数据进行预训练",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "第一阶段使用 Adam 优化器",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "第二阶段在目标域数据上进行微调",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "第二阶段引入 Focal Loss 解决正负样本不平衡问题",
+          "status": "supported",
+          "evidence_idx": []
+        }
+      ],
+      "evidence_recall": 1.0,
+      "completeness": 1.0,
+      "citation_valid": true,
+      "mode": "llm"
+    },
+    {
+      "id": "bh_hard_03",
+      "type": "hard_single_hop",
+      "question": "DICOM 像素值转换为 HU 值时，需要用到哪两个参数？转换公式是什么？",
+      "answer": "{\n  \"diagnosis\": \"DICOM像素值转换为HU值需要用到Rescale Slope和Rescale Intercept两个参数，转换公式为HU = Rescale Slope × SV + Rescale Intercept。\",\n  \"confidence\": \"高\",\n  \"evidence\": [\n    \"DICOM头文件中的Rescale Slope (0028,1053) 和 Rescale Intercept (0028,1052) 是关键的DICOM标签，用于将原始像素值转换为HU值 [1]\",\n    \"转换公式为HU=Rescale Slope×SV+Rescale Intercept，其中SV为原始像素值 [1]\",\n    \"对于典型的CT图像，Rescale Slope和Rescale Intercept通常为1和-1024 [1]\"\n  ],\n  \"suggestion\": \"在AI模型处理CT影像前，务必根据DICOM头文件中的这两个参数进行HU转换，以确保数据具有临床物理意义。\",\n  \"sources\": [\"DICOM 像素值到 HU",
+      "abstained": false,
+      "answer_correct": false,
+      "claims": [
+        {
+          "text": "DICOM像素值转换为HU值需要用到Rescale Slope和Rescale Intercept两个参数",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "转换公式为HU = Rescale Slope × SV + Rescale Intercept",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "对于典型的CT图像，Rescale Slope和Rescale Intercept通常为1和-1024",
+          "status": "supported",
+          "evidence_idx": []
+        }
+      ],
+      "evidence_recall": 1.0,
+      "completeness": 1.0,
+      "citation_valid": true,
+      "mode": "llm"
+    },
+    {
+      "id": "bh_multi_01",
+      "type": "multi_hop_composition",
+      "question": "肺结节检测模型的敏感度要求是多少？该模型推理加速使用什么框架？",
+      "answer": "```json\n{\n  \"diagnosis\": \"肺结节检测模型的敏感度要求大于95%，推理加速使用TensorRT框架\",\n  \"confidence\": \"高\",\n  \"evidence\": [\n    \"技术方案中明确要求模型敏感度（Sensitivity）需大于95% [3]\",\n    \"模型经过ONNX格式转换后，使用TensorRT进行推理加速 [4]\"\n  ],\n  \"suggestion\": \"建议在部署时验证实际敏感度是否满足>95%的指标要求，并确认TensorRT版本与GPU环境的兼容性\",\n  \"sources\": [\"02_CT影像肺结节检测技术方案\"],\n  \"uncertainty\": \"参考文档未提及敏感度指标的具体验证数据集规模及统计置信区间\"\n}\n```",
+      "abstained": false,
+      "answer_correct": false,
+      "claims": [
+        {
+          "text": "肺结节检测模型的敏感度要求大于95%",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "推理加速使用TensorRT框架",
+          "status": "supported",
+          "evidence_idx": []
+        }
+      ],
+      "evidence_recall": 1.0,
+      "completeness": 1.0,
+      "citation_valid": true,
+      "mode": "llm"
+    },
+    {
+      "id": "bh_multi_02",
+      "type": "multi_hop_composition",
+      "question": "AI 模型在外部验证集中的 AUC 是多少？该外部验证集来自多少家不同层级的医院？",
+      "answer": "**结论：**\n知识库中未找到足够证据回答：AI 模型在外部验证集中的 AUC 是多少？该外部验证集来自多少家不同层级的医院？\n\n**依据：**\n检索到的内容与问题相关性不足，无法给出可靠回答。\n\n> 📊 拒答原因: hop_2 证据缺失（这些医院分别属于什么层级（如三甲、二甲等）？）\n\n**建议下一步：**\n1. 换一种表述方式提问，或补充更多细节\n2. 联系管理员确认该主题是否已在知识库中",
+      "abstained": true,
+      "answer_correct": false,
+      "claims": [],
+      "evidence_recall": 1.0,
+      "completeness": 1.0,
+      "citation_valid": true,
+      "mode": "llm"
+    },
+    {
+      "id": "bh_multi_03",
+      "type": "multi_hop_composition",
+      "question": "sPESI 评分中，年龄超过多少岁记 1 分？该评分预测 30 天死亡率的灵敏度是多少？",
+      "answer": "{\n  \"diagnosis\": \"sPESI评分中年龄>80岁记1分，其预测30天死亡率的灵敏度为96%。\",\n  \"confidence\": \"高\",\n  \"evidence\": [\n    \"sPESI评分项目中，年龄>80岁记1分 [1]\",\n    \"sPESI在预测PE 30天死亡率方面具有96%的高灵敏度 [2]\"\n  ],\n  \"suggestion\": \"注意sPESI特异性较低（37%），建议结合右心室功能评估等其他指标进行综合危险分层 [2]\",\n  \"sources\": [\"临床危险分层：理解sPESI评分\"],\n  \"uncertainty\": \"无\"\n}",
+      "abstained": false,
+      "answer_correct": false,
+      "claims": [
+        {
+          "text": "sPESI评分中年龄>80岁记1分",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "其预测30天死亡率的灵敏度为96%",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "sPESI特异性较低（37%）",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "建议结合右心室功能评估等其他指标进行综合危险分层",
+          "status": "supported",
+          "evidence_idx": []
+        }
+      ],
+      "evidence_recall": 1.0,
+      "completeness": 1.0,
+      "citation_valid": true,
+      "mode": "llm"
+    },
+    {
+      "id": "bh_ood_01",
+      "type": "unsupported_ood",
+      "question": "如何用 Python 的 asyncio 实现高性能 WebSocket 服务器？",
+      "answer": "**结论：**\n知识库中未找到足够证据回答：如何用 Python 的 asyncio 实现高性能 WebSocket 服务器？\n\n**依据：**\n检索到的内容与问题相关性不足，无法给出可靠回答。\n\n> 📊 拒答原因: top1 证据相关性 0.008，证据与问题无关\n\n**建议下一步：**\n1. 换一种表述方式提问，或补充更多细节\n2. 联系管理员确认该主题是否已在知识库中",
+      "abstained": true,
+      "answer_correct": false,
+      "claims": [],
+      "evidence_recall": 0.0,
+      "completeness": 0.0,
+      "citation_valid": true,
+      "mode": "llm"
+    },
+    {
+      "id": "bh_ood_02",
+      "type": "unsupported_ood",
+      "question": "2026 年欧洲心脏病学会年会发布了哪些新的肺栓塞指南？",
+      "answer": "**结论：**\n知识库中未找到足够证据回答：2026 年欧洲心脏病学会年会发布了哪些新的肺栓塞指南？\n\n**依据：**\n检索到的内容与问题相关性不足，无法给出可靠回答。\n\n> 📊 拒答原因: 证据未提及2026年ESC年会及其新指南，仅涉及2025年指南。\n\n**建议下一步：**\n1. 换一种表述方式提问，或补充更多细节\n2. 联系管理员确认该主题是否已在知识库中",
+      "abstained": true,
+      "answer_correct": false,
+      "claims": [],
+      "evidence_recall": 0.0,
+      "completeness": 0.0,
+      "citation_valid": true,
+      "mode": "llm"
+    },
+    {
+      "id": "bh_partial_01",
+      "type": "partial_evidence",
+      "question": "医学图像标注的质量控制流程有哪些环节？标注质量如何影响 AI 模型性能？",
+      "answer": "```json\n{\n  \"diagnosis\": \"医学图像标注的质量控制流程包括初标、复核、抽检和一致性分析四个核心环节，标注质量直接影响AI模型的训练效果和检测性能\",\n  \"confidence\": \"高\",\n  \"evidence\": [\n    \"标注流程由标注员使用标注工具逐层勾画病灶轮廓，对于肺结节需在横断面、冠状面和矢状面三个视角分别确认 [2]\",\n    \"由资深放射科医生对初标结果进行复核，检查病灶边界是否准确、是否有遗漏的病灶、标注类别是否正确 [2]\",\n    \"由科室主任对复核后的标注进行抽检，抽检比例不低于20%，终审通过的数据方可入库用于模型训练 [2]\",\n    \"定期对标注结果进行一致性分析，计算标注员间的Kappa系数，要求Kappa值大于0.80 [2]\",\n    \"标注质量直接影响模型性能，如边界标注过于宽松、磨玻璃结节边界判断不精确、漏标微小病灶（直径<5mm）、不同标注员类别判断不一致等问题会导致训练数据质量下降 [2]\",\n    \"在肺栓塞检测模型研究中，由低年资医师逐层勾画感兴趣区，再由高年资医师审核，最终以审核过的标注数据集作",
+      "abstained": false,
+      "answer_correct": false,
+      "claims": [
+        {
+          "text": "医学图像标注的质量控制流程包括初标、复核、抽检和一致性分析四个核心环节",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "标注质量直接影响AI模型的训练效果和检测性能",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "标注流程由标注员使用标注工具逐层勾画病灶轮廓，对于肺结节需在横断面、冠状面和矢状面三个视角分别确认",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "由资深放射科医生对初标结果进行复核，检查病灶边界是否准确、是否有遗漏的病灶、标注类别是否正确",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "由科室主任对复核后的标注进行抽检，抽检比例不低于20%，终审通过的数据方可入库用于模型训练",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "定期对标注结果进行一致性分析，计算标注员间的Kappa系数，要求Kappa值大于0.80",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "标注质量直接影响模型性能，如边界标注过于宽松、磨玻璃结节边界判断不精确、漏标微小病灶（直径<5mm）、不同标注员类别判断不一致等问题会导致训练数据质量下降",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "在肺栓塞检测模型研究中，由低年资医师逐层勾画感兴趣区，再由高年资医师审核，最终以审核过的标注数据集作为图像标注的标准Mask，保证了模型训练数据的准确性",
+          "status": "supported",
+          "evidence_idx": []
+        }
+      ],
+      "evidence_recall": 1.0,
+      "completeness": 1.0,
+      "citation_valid": true,
+      "mode": "llm"
+    },
+    {
+      "id": "bh_partial_02",
+      "type": "partial_evidence",
+      "question": "从 DICOM 原始数据到深度学习模型可用的 NIfTI 格式，需要经过哪些处理步骤？体素重采样的目的是什么？",
+      "answer": "```json\n{\n  \"diagnosis\": \"从DICOM原始数据到深度学习模型可用的NIfTI格式，需要经过像素值到HU转换、体素重采样和格式转换三个核心处理步骤；体素重采样的目的是实现不同设备扫描图像的空间标准化。\",\n  \"confidence\": \"高\",\n  \"evidence\": [\n    \"DICOM原始像素值（SV）并非直接是HU值，需要根据DICOM头文件中的Rescale Slope (0028,1053) 和 Rescale Intercept (0028,1052) 标签进行线性变换：HU=Rescale Slope×SV+Rescale Intercept，典型CT图像这两个值通常为1和-1024 [1]\",\n    \"体素重采样（Resampling）是对原始数据进行空间标准化的关键预处理步骤，因为不同设备扫描的CT图像可能具有不同的体素尺寸（例如0.5×0.5×1.25mm³），这会导致模型的感受野和特征尺度不一致 [1]\",\n    \"重采样过程中估算新体素位置数值的方法包括三线性插值（速度较快、图像过渡平滑）、三三次样条插值（误差和速度平衡较好",
+      "abstained": false,
+      "answer_correct": false,
+      "claims": [
+        {
+          "text": "从DICOM原始数据到深度学习模型可用的NIfTI格式，需要经过像素值到HU转换、体素重采样和格式转换三个核心处理步骤",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "体素重采样的目的是实现不同设备扫描图像的空间标准化",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "DICOM原始像素值（SV）并非直接是HU值，需要根据DICOM头文件中的Rescale Slope (0028,1053) 和 Rescale Intercept (0028,1052) 标签进行线性变换：HU=Rescale Slope×SV+Rescale Intercept",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "典型CT图像这两个值通常为1和-1024",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "体素重采样（Resampling）是对原始数据进行空间标准化的关键预处理步骤，因为不同设备扫描的CT图像可能具有不同的体素尺寸（例如0.5×0.5×1.25mm³），这会导致模型的感受野和特征尺度不一致",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "重采样过程中估算新体素位置数值的方法包括三线性插值（速度较快、图像过渡平滑）、三三次样条插值（误差和速度平衡较好）、最近邻插值（速度极快但可能产生锯齿状伪影）和窗sinc插值（精度最高但计算量最大）",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "NIfTI格式的核心优势在于将图像数据与空间信息（如体素间物理距离）结合存储在一个.nii或.nii.gz文件中，已成为神经影像和医学影像AI领域的通用格式",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "在CTPA肺栓塞检测的实际应用中，图像预处理步骤包括使用SimpleITK读取CTPA标注数据集并将数据转换为HU值，同时设置窗位和窗宽",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "建议在体素重采样时根据具体应用场景选择合适的插值方法：数据量大且精度要求不高时可选三线性插值，需要高精度时可选三三次样条插值或窗sinc插值",
+          "status": "supported",
+          "evidence_idx": []
+        },
+        {
+          "text": "同时注意在转换为HU值后根据目标组织设置合适的窗宽窗位（如肺栓塞检测中窗位100 Hu、窗宽900 Hu）",
+          "status": "unsupported",
+          "evidence_idx": []
+        },
+        {
+          "text": "参考文档未详细说明NIfTI格式转换的具体实现细节（如方向矩阵、原点坐标等空间参数的映射方式），也未提及是否需要额外的归一化或标准化步骤（如z-score标准化）",
+          "status": "unverifiable",
+          "evidence_idx": []
+        }
+      ],
+      "evidence_recall": 1.0,
+      "completeness": 1.0,
+      "citation_valid": true,
+      "mode": "llm"
+    }
+  ]
+}

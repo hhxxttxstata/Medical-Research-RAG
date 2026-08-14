@@ -54,7 +54,7 @@ claim 级 grounded 评测：最终答案 74 条事实断言 73 条被证据支�
 - 混合检索：`multilingual-e5-base` 向量 + Whoosh BM25 双路召回 → RRF 融合
 - 消融实验（Step 1-9）证明每个组件边际贡献：rewrite 无正收益 → 冻结掉；
   reranker +0.05 Hit Rate；hybrid 是必要底座
-- 检索层结果：81 题 Hit Rate 80%、MRR 0.80、NDCG@5 0.845
+- 检索层结果：81 题 Hit Rate 80%、MRR 0.507、NDCG@5 0.551
 
 **面试追问准备**：
 - *RRF 为什么用 k=60？* → 做过 k 消融，60 在召回与精度间最优
@@ -167,7 +167,7 @@ retrieve/decompose/evaluate/policy/finalize + 条件边），**零策略逻辑�
 
 | 数字 | 含义 |
 |---|---|
-| 80% / 0.80 / 0.845 | 检索层 Hit Rate / MRR / NDCG@5（81 题） |
+| 80% / 0.507 / 0.551 | 检索层 Hit Rate / MRR / NDCG@5（81 题） |
 | 11/16 vs 7/16 | holdout Policy Action Acc（v2 vs v1） |
 | 4 vs 0 | holdout Decomp Success（v2 vs v1） |
 | 2/2 | OOD 正确拒答 |
@@ -186,3 +186,5 @@ retrieve/decompose/evaluate/policy/finalize + 条件边），**零策略逻辑�
 | "我们做了很多实验" | "每一步都由 benchmark 验证：failure case 驱动设计、消融量化边际贡献、holdout 一次性验收" |
 | "检索效果提高了" | "混合检索 + reranker 消融后 Hit Rate 80%（rewrite 无正收益已冻结）" |
 | "答案挺准的" | "claim 级 grounded 评测 0.993，1.4% unsupported 逐条显式记录" |
+| "v2 比 v1 显著提升" | "holdout 上 7/16→11/16、Decomp 0→4；16 题样本 McNemar 不显著（χ²≈2.25），所以它是一次性泛化验收 gate，不是科研显著性结论——工程上以过程纪律和方向一致性为准" |
+| （被问 v2.1 成本优化为何只在 dev 验证） | "v2.1 cost-aware 在 18 题 dev 上 grader calls 18/18→1/18（-94%）；holdout 16 题未复测，因为 holdout 是冻结验收集，跑完 v2 验收后不得再用于调参——复测 holdout 是 v2.1 冻结清单的一部分，属于部署前验收步骤，未执行时如实说明" |
