@@ -239,6 +239,17 @@ class RetrievalCache:
                 pass
         self._mem.clear()
 
+    def clear(self) -> None:
+        """清空全部检索缓存（内存 + Redis，重建知识库后调用）"""
+        self._mem.clear()
+        if RedisClient.is_enabled():
+            try:
+                client = RedisClient.get_client()
+                for k in client.scan_iter(f"{self.REDIS_PREFIX}*"):
+                    client.delete(k)
+            except Exception:
+                pass
+
 
 # ═══════════════════════════════════════════════════
 #  回答缓存（精确 + 语义匹配）

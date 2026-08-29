@@ -299,7 +299,8 @@ async def upload_document(
     if pipeline is None:
         raise HTTPException(status_code=503, detail="服务尚未初始化完成")
 
-    filename = Path(file.filename or f"upload_{int(time.time())}").name  # basename 净化，防路径穿越
+    # basename 净化，防路径穿越：反斜杠统一转正斜杠（跨平台，Windows/Linux 都有效）
+    filename = Path((file.filename or f"upload_{int(time.time())}").replace("\\", "/")).name
     suffix = Path(filename).suffix.lower()
     if suffix not in (".pdf", ".md", ".txt"):
         raise HTTPException(status_code=400, detail=f"不支持 {suffix}，支持 PDF/MD/TXT")

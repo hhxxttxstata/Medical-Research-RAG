@@ -90,7 +90,7 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern]] = [
     (
         "system_prompt_override",
         re.compile(
-            r"(忽略|忘记|无视|遗忘|覆盖|跳过)(之前|先前|所有|以上|任何|一切|的)*?(指令|规则|要求|提示词|提示|系统提示|设定)",
+            r"(忽略|忘记|无视|遗忘|覆盖|跳过)(之前|先前|所有|以上|任何|一切|的|你)*?(指令|规则|要求|提示词|提示|系统提示|设定|角色)",
             re.I,
         ),
     ),
@@ -119,7 +119,10 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern]] = [
     ),
     (
         "medical_boundary",
-        re.compile(r"(忽略|无视)(医学|临床|安全|伦理)(准则|规范|规则|指南)", re.I),
+        re.compile(
+            r"(忽略|无视)(医学|临床|安全|伦理)[^，。；\n]{0,6}?(准则|规范|规则|指南)",
+            re.I,
+        ),
     ),
     (
         "medical_boundary",

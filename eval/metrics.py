@@ -43,6 +43,17 @@ def _is_target_match(filename: str, target: str) -> bool:
     return filename == target or filename == target.rsplit(".", 1)[0]
 
 
+def doc_hit(expected_doc: str, sources: list[dict[str, Any]]) -> bool:
+    """expected_doc（可能带扩展名）是否命中任一检索来源的 filename
+
+    与 _hit_rank 同一语义：比较完整名与去扩展名两种形式。
+    （issue #2 修复：此前 run_full_pipeline_eval 用带扩展名子串匹配恒失败）
+    """
+    if not expected_doc:
+        return False
+    return any(_is_target_match((s.get("metadata") or {}).get("filename", ""), expected_doc) for s in sources)
+
+
 def _hit_rank(r: dict[str, Any]) -> int | None:
     """expected_doc 在检索结果中的首次出现位置（从 1 开始），未命中返回 None
 

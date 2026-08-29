@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.stdout.reconfigure(encoding="utf-8")
 
-from eval.metrics import compute_all_metrics, print_metrics_report  # noqa: E402
+from eval.metrics import compute_all_metrics, doc_hit, print_metrics_report  # noqa: E402
 from eval.test_questions import get_test_questions  # noqa: E402
 from src.rag_pipeline import RAGPipeline  # noqa: E402
 from src.reranker import CrossEncoderReranker  # noqa: E402
@@ -49,13 +49,8 @@ for i, q in enumerate(questions):
 
     expected_doc = q.get("expected_doc", "")
     sources = result.get("sources", [])
-    # expected_doc 形如 "xxx.md"，而 filename 是去扩展名的 stem——需先去掉扩展名再匹配
-    expected_stem = Path(expected_doc).stem if expected_doc else ""
-    expected_hit = (
-        bool(expected_stem and any(expected_stem in s.get("metadata", {}).get("filename", "") for s in sources))
-        if expected_doc
-        else None
-    )
+    # expected_doc 形如 "xxx.md"，filename 是去扩展名的 stem——统一走 doc_hit 匹配
+    expected_hit = doc_hit(expected_doc, sources) if expected_doc else None
 
     cat = q.get("category", "unknown")
     diff = q.get("difficulty", "unknown")
