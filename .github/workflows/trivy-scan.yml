@@ -23,7 +23,7 @@ jobs:
       - name: Build Docker image
         run: docker build -t pe-rag-backend -f Dockerfile.backend .
       - name: Run Trivy scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: pe-rag-backend
           format: table
