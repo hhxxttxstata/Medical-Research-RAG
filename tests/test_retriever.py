@@ -83,11 +83,29 @@ class TestRetriever:
             assert "score" in r
 
     def test_retrieve_top_k(self, mock_embedding, mock_vector_store):
+        """纯向量分支：取 2k 候选 → 文档级多样性 → 返回 k 条"""
         retriever = Retriever(vector_store=mock_vector_store, embedding_provider=mock_embedding, top_k=5)
         retriever.retrieve("测试", top_k=3)
         mock_vector_store.similarity_search.assert_called_once()
         call_kwargs = mock_vector_store.similarity_search.call_args[1]
-        assert call_kwargs["top_k"] == 3
+        # 2026-08 优化：2k 候选供文档级多样性截断（防止大文档霸榜）
+        assert call_kwargs["top_k"] == 6
+
+    def test_diversify_by_doc(self, mock_embedding, mock_vector_store):
+        """文档级多样性：同文档最多 max_per_doc 条"""
+        retriever = Retriever(vector_store=mock_vector_store, embedding_provider=mock_embedding, top_k=5)
+        results = [
+            {"id": "a1", "text": "x", "metadata": {"filename": "A.md"}},
+            {"id": "a2", "text": "x", "metadata": {"filename": "A.md"}},
+            {"id": "a3", "text": "x", "metadata": {"filename": "A.md"}},
+            {"id": "b1", "text": "x", "metadata": {"filename": "B.md"}},
+            {"id": "c1", "text": "x", "metadata": {"filename": "C.md"}},
+        ]
+        out = retriever._diversify_by_doc(results, max_per_doc=2)
+        assert [r["id"] for r in out] == ["a1", "a2", "b1", "c1"]
+        # 无 filename 的 chunk 不限制
+        out2 = retriever._diversify_by_doc([{"id": "n1", "text": "x", "metadata": {}}] * 5, max_per_doc=1)
+        assert len(out2) == 5
 
     def test_retrieve_calls_embed(self, mock_embedding, mock_vector_store):
         """验证检索时是否传了 query: prefix"""

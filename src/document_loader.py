@@ -9,6 +9,7 @@
   load_document() → 保持原有行为
 """
 
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -112,22 +113,49 @@ def _load_txt(file_path: str, filename: str) -> dict[str, Any]:
 
 def load_documents_from_dir(directory: str) -> list[dict[str, Any]]:
     """
-    批量加载目录下的所有文档（PDF、MD、TXT）
+    批量加载目录及其一级子目录下的所有文档（PDF、MD、TXT）
     纯文本模式，使用旧版 load_document
+
+    知识域（domain）约定：一级子目录名作为文档的 domain tag
+    （如 pe_literature / writing_guidelines），根目录文件归为 general。
     """
     supported_ext = {".pdf", ".md", ".txt"}
     documents = []
 
-    for file in sorted(Path(directory).iterdir()):
-        if file.suffix.lower() in supported_ext and not file.name.startswith("."):
-            try:
-                doc = load_document(str(file))
-                documents.append(doc)
-                print(f"  ✅ 加载: {file.name} ({len(doc['full_text'])} 字符)")
-            except Exception as e:
-                print(f"  ❌ 加载失败: {file.name} - {e}")
+    for file in _iter_docs(directory, supported_ext):
+        try:
+            doc = load_document(str(file))
+            doc.setdefault("metadata", {})["domain"] = _domain_of(directory, file)
+            documents.append(doc)
+            print(f"  ✅ 加载: {file.name} ({len(doc['full_text'])} 字符)")
+        except Exception as e:
+            print(f"  ❌ 加载失败: {file.name} - {e}")
 
     return documents
+
+
+def _iter_docs(directory: str, supported_ext: set[str]):
+    """递归遍历目录（深度 2：根目录 + 一级子目录），跳过隐藏文件与文件夹"""
+    root = Path(directory)
+    for dirpath, dirnames, filenames in os.walk(root):
+        # 只下钻一级子目录
+        if Path(dirpath) != root:
+            dirnames[:] = []
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        for name in sorted(filenames):
+            if name.startswith("."):
+                continue
+            p = Path(dirpath) / name
+            if p.suffix.lower() in supported_ext:
+                yield p
+
+
+def _domain_of(directory: str, file: Path) -> str:
+    """按一级子目录名打知识域 tag；根目录文件 → general"""
+    rel = file.resolve().parent.relative_to(Path(directory).resolve())
+    if rel == Path("."):
+        return "general"
+    return str(rel.parts[0])
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -151,22 +179,30 @@ def load_and_process_document(file_path: str) -> dict[str, Any]:
 
 
 def load_and_process_from_dir(directory: str) -> list[dict[str, Any]]:
-    """批量加载并处理目录下的所有文档"""
+    """批量加载并处理目录及其一级子目录下的所有文档
+
+    知识域（domain）约定：一级子目录名作为 chunk metadata 的 domain tag
+    （如 pe_literature / writing_guidelines），根目录文档归为 general。
+    """
     supported_ext = {".pdf", ".md", ".txt"}
     results = []
 
-    for file in sorted(Path(directory).iterdir()):
-        if file.suffix.lower() in supported_ext and not file.name.startswith("."):
-            try:
-                result = load_and_process_document(str(file))
-                results.append(result)
-                if result.get("quality_blocked"):
-                    print(f"  🚫 质量拦截: {file.name} (score={result.get('quality_score', 0):.2f})")
-                    continue
-                sc = len(result.get("small_chunks", []))
-                pc = len(result.get("parent_chunks", []))
-                print(f"  ✅ 处理: {file.name} (small={sc}, parent={pc})")
-            except Exception as e:
-                print(f"  ❌ 处理失败: {file.name} - {e}")
+    for file in _iter_docs(directory, supported_ext):
+        try:
+            result = load_and_process_document(str(file))
+            domain = _domain_of(directory, file)
+            for c in result.get("small_chunks", []):
+                c.setdefault("metadata", {})["domain"] = domain
+            for c in result.get("parent_chunks", []):
+                c.setdefault("metadata", {})["domain"] = domain
+            results.append(result)
+            if result.get("quality_blocked"):
+                print(f"  🚫 质量拦截: {file.name} (score={result.get('quality_score', 0):.2f})")
+                continue
+            sc = len(result.get("small_chunks", []))
+            pc = len(result.get("parent_chunks", []))
+            print(f"  ✅ 处理: {file.name} (small={sc}, parent={pc}) [domain={domain}]")
+        except Exception as e:
+            print(f"  ❌ 处理失败: {file.name} - {e}")
 
     return results

@@ -69,6 +69,21 @@ def test_final_answer_accuracy():
     assert final_answer_accuracy("答案是43个", "42") is False
     assert final_answer_accuracy("", "42") is False
     assert final_answer_accuracy("随便说", "") is False
+    # 2026-08-17：JSON 结构化答案解包（diagnosis + evidence）与空白归一化
+    assert (
+        final_answer_accuracy(
+            '{"diagnosis": "内部测试集AUC为0.981", "evidence": ["内部测试集AUC为0.981"]}', "AUC 为 0.981"
+        )
+        is True
+    )
+    assert final_answer_accuracy('```json\n{"diagnosis": "各由 6 个相同的层堆叠而成"}\n```', "6 个相同的层") is True
+    # 事实在 evidence 字段（诊断句为概括）
+    assert (
+        final_answer_accuracy('{"diagnosis": "两种血栓表现存在差异", "evidence": ["马鞍征、环征/轨道征"]}', "马鞍征")
+        is True
+    )
+    # 内容缺失仍判失败
+    assert final_answer_accuracy('{"diagnosis": "完全无关的答案"}', "0.981") is False
 
 
 def test_policy_action_accuracy():
@@ -82,6 +97,12 @@ def test_policy_action_accuracy():
     assert policy_action_accuracy(["RETRIEVE", "ACCEPT"], Q_MULTI["expected_route"]) is False
     # abstain 类
     assert policy_action_accuracy(["RETRIEVE", "ABSTAIN"], ["RETRIEVE", "ABSTAIN"]) is True
+    # B2 预检兼容：v2.1 多问号 route=[DECOMPOSE, ACCEPT]（位置 0 直进拆解）→ True
+    assert policy_action_accuracy(["DECOMPOSE", "ACCEPT"], Q_MULTI["expected_route"]) is True
+    # B2 预检 + 缺失 hop 补捞 → 仍 True
+    assert policy_action_accuracy(["DECOMPOSE", "RETRIEVE", "ACCEPT"], Q_MULTI["expected_route"]) is True
+    # easy 题循环内拆解（位置 1 起）→ 仍判过度动作 → False
+    assert policy_action_accuracy(["RETRIEVE", "DECOMPOSE", "ACCEPT"], ["RETRIEVE", "ACCEPT"]) is False
 
 
 def test_retry_recovery():

@@ -8,9 +8,6 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 python-multipart>=0.0.12
 torch>=1.10.0
-nibabel>=5.0.0
-scipy>=1.7.0
-matplotlib
 watchdog>=6.0.0
 redis>=5.0.0
 whoosh>=0.7.8

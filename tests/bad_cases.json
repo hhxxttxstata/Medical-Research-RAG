@@ -1,0 +1,115 @@
+{
+  "_comment": "Bad Case 登记表 —— 评测驱动开发闭环的起点（bad case → candidate → qualification → regression → promotion）。每个坏例记录：问题 → 归因 → 修复 → 验证 → 状态。新发现坏例在此登记，对应修复必须过 qualify.py 门禁才可冻结。",
+  "bad_cases": [
+    {
+      "id": "bh_ood_02",
+      "discovered": "2026-08-10",
+      "problem": "时间敏感 OOD（'2026 年 ESC 新指南'）被误 ACCEPT：reranker top1=0.946 高相关但答案不存在",
+      "expected_behavior": "ABSTAIN（答案不被支持时不得 ACCEPT）",
+      "root_cause": "Relevance ≠ Support：top1 高相关 ≠ 答案被证据支持",
+      "fix": "v2 ACCEPT 三元条件（relevant AND complete AND supported）+ grader unsupported 否决高相关",
+      "verification": "bh_ood_02 dev 题 + ho_ood_02 holdout 题均拒答",
+      "status": "closed",
+      "dev_case": "bh_ood_02"
+    },
+    {
+      "id": "bh_multi_01",
+      "discovered": "2026-08-11",
+      "problem": "多问号题（'敏感度要求是多少？推理框架是什么？'）cheap gate 直接 ACCEPT 单跳 → 丢失第二个 hop 的证据",
+      "expected_behavior": "DECOMPOSE → 逐 hop 采集证据 → 全部 SUPPORTED 才 ACCEPT",
+      "root_cause": "原始问题混合多个子问题时，rerank top1 只命中其一；缺 hop 级完整性检查",
+      "fix": "v2 引入 HopState + plan + completeness：结构信号命中 → 先生成 hop plan",
+      "verification": "bh_multi_01 dev 题 DECOMPOSE→ACCEPT",
+      "status": "closed",
+      "dev_case": "bh_multi_01"
+    },
+    {
+      "id": "bh_partial_01",
+      "discovered": "2026-08-11",
+      "problem": "部分证据题（三线性 vs 三三次样条插值）：单跳检索只覆盖一半事实点，V0 完全 miss",
+      "expected_behavior": "检测缺失 hop → 定向补检索 → 证据完整后 ACCEPT",
+      "root_cause": "无 hop 级缺失检测，flat candidates 无法感知'哪个子问题缺证据'",
+      "fix": "v2 missing-hop 检测 + targeted retrieve（13D）→ Final Rescue 1（V0 miss → v2 命中）",
+      "verification": "bh_partial_01 dev 题 rescue=1；holdout ho_partial_01",
+      "status": "closed",
+      "dev_case": "bh_partial_01"
+    },
+    {
+      "id": "bh_easy_03_hard_02_03",
+      "discovered": "2026-08-11",
+      "problem": "'X和Y分别'类问题被规则误判 multi-part → 误拆单跳可答题（'窗宽和窗位'）",
+      "expected_behavior": "单跳可答的并列属性不拆解；真多实体对比才拆解",
+      "root_cause": "_is_multi_part 对对比词/并列词无条件返回 True，与 docstring 设计决策矛盾",
+      "fix": "B1（2026-08-17）：_is_multi_part 收敛为仅多问号；对比/并列移入 _is_comparison → 交 LLM grader 裁决",
+      "verification": "test_is_multi_part / test_is_comparison 单测 + holdout 30 题",
+      "status": "closed",
+      "dev_case": "bh_easy_03 bh_hard_02 bh_hard_03"
+    },
+    {
+      "id": "ood_overlap_false_negative",
+      "discovered": "2026-08-09",
+      "problem": "OOD 题词面误判 4 题：2-gram 共享太宽松（'心血''肺栓'等高频 bigram 在医学文档中普遍出现）",
+      "expected_behavior": "OOD 问题正确拒答且不误杀库内题",
+      "root_cause": "主题相关性判定用 2-gram 过于宽松",
+      "fix": "v1 滑动窗口 3-4 字 + 通用词表（_GENERIC_TERMS）",
+      "verification": "OOD 误判 4 题 → 0（step10 记录）；OOD 16/16、库内误拒 0/56",
+      "status": "closed",
+      "dev_case": ""
+    },
+    {
+      "id": "ho_hard_01_gold_error",
+      "discovered": "2026-08-17",
+      "problem": "holdout 30 题 ho_hard_01 评测 ER=0.00：gold 指向 08_AI模型评估与验证报告_small_1（报告概述），SNR 8.5% 事实实际在 _small_2",
+      "expected_behavior": "gold_chunk_ids 必须指向包含答案事实的 chunk",
+      "root_cause": "gold 标注错误（标注问题，非系统缺陷）——检索实际成功（答案证据含 _small_2 内容）",
+      "fix": "标注修正：gold → 08_AI模型评估与验证报告_small_2",
+      "verification": "修正后 ER=1.00，答案含 '敏感度下降8.5%'",
+      "status": "closed",
+      "dev_case": "ho_hard_01 (holdout)"
+    },
+    {
+      "id": "final_answer_false_negative",
+      "discovered": "2026-08-17",
+      "problem": "Final Answer Acc 14/30 假阴性：生成答案是被 markdown 代码块包裹的结构化 JSON（diagnosis/evidence 字段），长句期望串子串匹配失败（12 题全为语义正确的改写表述）",
+      "expected_behavior": "指标衡量'关键信息出现在答案中'而非'表述逐字对齐'",
+      "root_cause": "final_answer_accuracy 未解包结构化答案 + 期望串过长 + 空白敏感",
+      "fix": "指标修复：解包 JSON（diagnosis + evidence）+ 空白归一化；gold 标注改为关键事实短串",
+      "verification": "30 题 Final Answer Acc 14/30 → 26/26（可答题）",
+      "status": "closed",
+      "dev_case": ""
+    },
+    {
+      "id": "v1_no_decompose",
+      "discovered": "2026-08-11",
+      "problem": "v1 从不拆解（Decomp Success=0）：多跳题交 LLM policy 自由选择导致 RETRIEVE 而非拆解",
+      "expected_behavior": "多跳题结构化拆解后逐 hop 采集",
+      "root_cause": "DECOMPOSE 依赖 LLM 自由决策，无结构信号先行",
+      "fix": "v2 结构信号（多问号）直接触发 DECOMPOSE + structured plan",
+      "verification": "Decomp Success 0 → 4（16 题）→ 7（30 题）",
+      "status": "closed",
+      "dev_case": "bh_multi_01 bh_comp_01 bh_comp_02 bh_partial_01"
+    },
+    {
+      "id": "rerank_cap_truncation_bug",
+      "discovered": "2026-08-17",
+      "problem": "qualify --full 门禁抓到回归：bh_multi_01 从 DECOMPOSE→ACCEPT 退化为 DECOMPOSE→ABSTAIN（ER=0.00）。根因：当日新增的 RERANK_CAP 用 evidence_bank[:16] 截断，而 bank 是跨轮累积的 append 序——hop2 定向检索新捞到的 gold（_small_3，RRF top1）排在 bank 末尾被截掉 → 证据永远 MISSING",
+      "expected_behavior": "hop 定向检索新捞到的证据必须参与重排（hop2 gold 可达，MISSING 是误判）",
+      "root_cause": "截断顺序错误：应按 RRF 分数降序（跨 query 同尺度可比）而非 append 序",
+      "fix": "_assign_to_hops / _select_final_evidence 截断改为按 _rrf_score 降序取 RERANK_CAP；_accumulate 刷新已有 chunk 的 score/_rrf_score（hop 检索把 chunk 从低相关捞到高相关时旧分误导截断）；新增单测 test_assign_to_hops_rrf_cap_keeps_late_evidence",
+      "verification": "qualify --full 重跑（修复后 bh_multi_01 DECOMPOSE→ACCEPT ER=1.00，bad case 子集可答题 ER=1.000，门禁 PASS）",
+      "status": "closed",
+      "dev_case": "bh_multi_01"
+    },
+    {
+      "id": "dev_gold_misalignment",
+      "discovered": "2026-08-17",
+      "problem": "dev 18 题中 3 题 gold 指向概述/错误 chunk：bh_hard_02（学习率 0.001/0.0001 在 _small_2，gold 指向 _small_1 概述）、bh_constraint_01（Focal Loss 在 _small_2，gold 指向 _small_1）、bh_constraint_02（V/Q 显像在诊断流程 _small_2，gold 指向 _small_1）。qualify --full 实测 bh_hard_02 ER=0.00（答案实际可达，final evidence 第 1 名即 _small_2）",
+      "expected_behavior": "gold_chunk_ids 必须指向包含答案事实的 chunk",
+      "root_cause": "dev 集早期标注错位（与 ho_hard_01 同类：概述 chunk 被误标为答案来源）",
+      "fix": "gold 修正：bh_hard_02 / bh_constraint_01 → 02_CT影像肺结节检测技术方案_small_2；bh_constraint_02 → 诊断流程指南：从怀疑到确诊_small_2；新增批量验证脚本方法（final_answer 关键词 × gold 集合覆盖）",
+      "verification": "qualify --full 重跑：bad case 子集可答题 ER 0.786 → 1.000",
+      "status": "closed",
+      "dev_case": "bh_hard_02 bh_constraint_01 bh_constraint_02"
+    }
+  ]
+}

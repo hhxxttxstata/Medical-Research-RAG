@@ -14,7 +14,6 @@ import {
   PanelLeft,
   Plus,
   MessageSquare,
-  Stethoscope,
   BookOpen,
   Settings,
   BarChart3,
@@ -23,12 +22,10 @@ import {
   Upload,
   Activity,
   Database,
-  FileText,
   Cpu,
   Server,
   HardDrive,
   RefreshCw,
-  Trash2,
   CheckCircle2,
   XCircle,
   AlertTriangle,
@@ -36,7 +33,7 @@ import {
 
 // ─── Types ────────────────────────────────────────
 
-type NavPanel = "chat" | "diagnose" | "knowledge" | "stats" | "settings"
+type NavPanel = "chat" | "knowledge" | "stats" | "settings"
 
 interface NavItemProps {
   icon: React.ReactNode
@@ -62,119 +59,6 @@ function NavItem({ icon, label, isActive, onClick, collapsed }: NavItemProps) {
       <span className="shrink-0">{icon}</span>
       {!collapsed && <span className="truncate">{label}</span>}
     </button>
-  )
-}
-
-// ─── Panel: 诊断工具 ─────────────────────────────
-
-function DiagnosePanel({ onResult }: { onResult: (text: string) => void }) {
-  const [file, setFile] = useState<File | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const handleUpload = async () => {
-    if (!file) return
-    setLoading(true)
-    setError(null)
-    setResult(null)
-    try {
-      const res = await api.diagnose(file)
-      if (!res.success) {
-        setError(res.error || "诊断失败")
-      } else {
-        const riskEmoji =
-          res.risk_level === "高风险" ? "🔴" :
-          res.risk_level === "中风险" ? "🟡" :
-          res.risk_level === "低风险" ? "🟢" : "✅"
-        const report = [
-          `## 🩺 肺栓塞诊断报告`,
-          ``,
-          `| 项目 | 结果 |`,
-          `|------|------|`,
-          `| 📂 影像文件 | \`${res.filename}\` |`,
-          `| ${riskEmoji} 诊断结果 | **${res.risk_level}** (${res.prediction ? "阳性" : "阴性"}) |`,
-          `| 📊 肺栓塞概率 | **${(res.probability * 100).toFixed(2)}%** |`,
-          `| ⏱️ 推理耗时 | ${res.inference_time.toFixed(2)}s |`,
-          ``,
-          `> ⚠️ **免责声明:** 本结果为 AI 辅助诊断建议，仅供参考。`,
-        ].join("\n")
-        setResult(report)
-        onResult(report)
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "诊断请求失败")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h3 className="text-sm font-semibold text-foreground/80 flex items-center gap-2">
-          <Stethoscope size={16} /> CTPA 影像诊断
-        </h3>
-        <p className="text-xs text-muted-foreground mt-1">
-          上传 NIfTI 格式 (.nii / .nii.gz) 的 CTPA 影像进行肺栓塞辅助诊断
-        </p>
-      </div>
-
-      <div className="rounded-lg border-2 border-dashed border-border p-8 text-center hover:border-primary/50 transition-colors">
-        <input
-          type="file"
-          accept=".nii,.nii.gz"
-          id="diagnose-file-input"
-          className="hidden"
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
-        />
-        {file ? (
-          <div className="space-y-3">
-            <FileText size={32} className="mx-auto text-primary" />
-            <p className="text-sm font-medium">{file.name}</p>
-            <p className="text-xs text-muted-foreground">
-              {(file.size / 1024 / 1024).toFixed(2)} MB
-            </p>
-            <div className="flex justify-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => { setFile(null); setResult(null); setError(null) }}>
-                <Trash2 size={14} className="mr-1" /> 重新选择
-              </Button>
-              <Button size="sm" onClick={handleUpload} disabled={loading}>
-                {loading ? "诊断中..." : "开始诊断"}
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <label htmlFor="diagnose-file-input" className="cursor-pointer block">
-            <Upload size={32} className="mx-auto text-muted-foreground mb-3" />
-            <p className="text-sm text-muted-foreground">
-              点击选择 CTPA 影像文件
-            </p>
-            <p className="text-xs text-muted-foreground/60 mt-1">
-              支持 .nii / .nii.gz 格式
-            </p>
-          </label>
-        )}
-      </div>
-
-      {loading && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <RefreshCw size={14} className="animate-spin" /> 模型推理中...
-        </div>
-      )}
-
-      {error && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-          <strong>诊断失败:</strong> {error}
-        </div>
-      )}
-
-      {result && (
-        <div className="rounded-lg border border-border bg-card p-4 text-sm leading-relaxed whitespace-pre-wrap font-mono text-xs">
-          {result}
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -408,7 +292,7 @@ function SettingsPanel() {
         <h4 className="text-xs font-semibold text-foreground/70 mb-3">API 端点</h4>
         <div className="space-y-1.5 text-xs">
           <code className="block rounded bg-muted px-2 py-1 text-[11px]">POST /chat — RAG 问答</code>
-          <code className="block rounded bg-muted px-2 py-1 text-[11px]">POST /diagnosis/predict — CTPA 诊断</code>
+          <code className="block rounded bg-muted px-2 py-1 text-[11px]">POST /query — Agentic 问答（LangGraph）</code>
           <code className="block rounded bg-muted px-2 py-1 text-[11px]">GET /health — 健康检查</code>
           <code className="block rounded bg-muted px-2 py-1 text-[11px]">GET /stats — 运行统计</code>
           <code className="block rounded bg-muted px-2 py-1 text-[11px]">POST /documents/upload — 上传文档</code>
@@ -421,17 +305,13 @@ function SettingsPanel() {
 // ─── Main Workbench ──────────────────────────────
 
 export function Workbench() {
-  const { messages, isLoading, sendMessage, diagnose, clearMessages, submitFeedback } = useChat()
+  const { messages, isLoading, sendMessage, clearMessages, submitFeedback } = useChat()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [activeNav, setActiveNav] = useState<NavPanel>("chat")
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null)
 
-  const handleSend = (text: string, file?: File) => {
-    if (file) {
-      diagnose(file)
-    } else {
-      sendMessage(text)
-    }
+  const handleSend = (text: string) => {
+    sendMessage(text)
   }
 
   const handleMessageClick = (msg: Message) => {
@@ -440,14 +320,8 @@ export function Workbench() {
     }
   }
 
-  const handleDiagnoseResult = (text: string) => {
-    // When diagnose panel produces a result, send it to chat
-    setActiveNav("chat")
-  }
-
   const getPanelTitle = () => {
     switch (activeNav) {
-      case "diagnose": return "诊断工具"
       case "knowledge": return "知识库"
       case "stats": return "统计"
       case "settings": return "设置"
@@ -493,13 +367,6 @@ export function Workbench() {
             label="对话"
             isActive={activeNav === "chat"}
             onClick={() => setActiveNav("chat")}
-            collapsed={sidebarCollapsed}
-          />
-          <NavItem
-            icon={<Stethoscope size={16} />}
-            label="诊断工具"
-            isActive={activeNav === "diagnose"}
-            onClick={() => setActiveNav("diagnose")}
             collapsed={sidebarCollapsed}
           />
           <NavItem
@@ -557,42 +424,42 @@ export function Workbench() {
                   {messages.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-24 text-center">
                       <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-                        <Stethoscope className="h-8 w-8 text-primary" />
+                        <BookOpen className="h-8 w-8 text-primary" />
                       </div>
                       <h3 className="mb-2 text-lg font-semibold text-foreground/80">
-                        肺栓塞智能问诊系统
+                        肺栓塞科研文献问答助手
                       </h3>
                       <p className="mb-8 max-w-md text-sm text-muted-foreground">
-                        基于 RAG 检索增强生成与 Agent 智能路由，支持知识问答、报告生成与 CTPA 影像诊断。
+                        面向肺栓塞中英文文献与论文写作规范的知识问答（仅科研辅助，不提供诊断建议）。
                       </p>
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <button
-                          onClick={() => handleSend("什么是肺栓塞？有哪些临床症状？")}
+                          onClick={() => handleSend("急性肺栓塞和慢性肺栓塞在病理生理上有什么区别？")}
                           className="rounded-xl border border-border bg-card p-4 text-left text-sm hover:bg-accent transition-colors"
                         >
-                          <span className="font-medium text-foreground/80">❓ 什么是肺栓塞？</span>
-                          <p className="mt-1 text-xs text-muted-foreground">了解疾病基础知识</p>
+                          <span className="font-medium text-foreground/80">❓ 急慢性 PE 病理区别</span>
+                          <p className="mt-1 text-xs text-muted-foreground">跨文档多跳检索示例</p>
                         </button>
                         <button
-                          onClick={() => handleSend("肺栓塞的 Wells 评分是什么？如何计算？")}
+                          onClick={() => handleSend("sPESI 评分如何计算？预测 30 天死亡率的灵敏度是多少？")}
                           className="rounded-xl border border-border bg-card p-4 text-left text-sm hover:bg-accent transition-colors"
                         >
-                          <span className="font-medium text-foreground/80">📋 Wells 评分</span>
-                          <p className="mt-1 text-xs text-muted-foreground">了解临床评估工具</p>
+                          <span className="font-medium text-foreground/80">📋 sPESI 评分</span>
+                          <p className="mt-1 text-xs text-muted-foreground">文献中的数值问答</p>
                         </button>
                         <button
-                          onClick={() => handleSend("帮我生成一份关于肺栓塞诊断与治疗的综述报告")}
+                          onClick={() => handleSend("深度学习方法在肺栓塞 CTPA 检测中的研究进展有哪些？")}
                           className="rounded-xl border border-border bg-card p-4 text-left text-sm hover:bg-accent transition-colors"
                         >
-                          <span className="font-medium text-foreground/80">📄 生成报告</span>
-                          <p className="mt-1 text-xs text-muted-foreground">Agent 自动撰写综述</p>
+                          <span className="font-medium text-foreground/80">📄 研究进展综述</span>
+                          <p className="mt-1 text-xs text-muted-foreground">聚合多篇文献的回答</p>
                         </button>
                         <button
-                          onClick={() => handleSend("CTPA 影像如何诊断肺栓塞？")}
+                          onClick={() => handleSend("如何撰写一篇结构规范的医学综述论文？")}
                           className="rounded-xl border border-border bg-card p-4 text-left text-sm hover:bg-accent transition-colors"
                         >
-                          <span className="font-medium text-foreground/80">🩻 影像诊断</span>
-                          <p className="mt-1 text-xs text-muted-foreground">了解诊断流程</p>
+                          <span className="font-medium text-foreground/80">✍️ 论文写作规范</span>
+                          <p className="mt-1 text-xs text-muted-foreground">写作规范知识域问答</p>
                         </button>
                       </div>
                     </div>
@@ -631,7 +498,6 @@ export function Workbench() {
             </>
           )}
 
-          {activeNav === "diagnose" && <DiagnosePanel onResult={handleDiagnoseResult} />}
           {activeNav === "knowledge" && <KnowledgePanel />}
           {activeNav === "stats" && <StatsPanel />}
           {activeNav === "settings" && <SettingsPanel />}

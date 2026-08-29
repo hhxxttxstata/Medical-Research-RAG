@@ -1,0 +1,507 @@
+{
+  "timestamp": "20260814_172844",
+  "config": {
+    "top_k": 8,
+    "rewrite": false,
+    "reranker": false,
+    "max_per_doc": 2
+  },
+  "metrics": {
+    "doc_recall_at_k": 0.7733,
+    "coverage_at_k": 1.92,
+    "doc_mrr_at_k": 0.8633,
+    "full_coverage_rate": 0.16,
+    "at_least_one_rate": 1.0
+  },
+  "records": [
+    {
+      "id": "cross_01",
+      "question": "医学影像AI系统的技术栈包括哪些？",
+      "gold_docs": [
+        "01_医学影像AI系统概述",
+        "10_RAG系统技术架构文档",
+        "09_产品用户手册"
+      ],
+      "hit_docs": [
+        "01_医学影像AI系统概述",
+        "09_产品用户手册"
+      ],
+      "missed_docs": [
+        "10_RAG系统技术架构文档"
+      ],
+      "ranks": {
+        "01_医学影像AI系统概述": 1,
+        "09_产品用户手册": 4
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_02",
+      "question": "肺结节检测使用哪些深度学习模型？",
+      "gold_docs": [
+        "02_CT影像肺结节检测技术方案",
+        "03_U-Net医学图像分割论文笔记",
+        "06_Transformer在医学影像中的应用"
+      ],
+      "hit_docs": [
+        "02_CT影像肺结节检测技术方案"
+      ],
+      "missed_docs": [
+        "03_U-Net医学图像分割论文笔记",
+        "06_Transformer在医学影像中的应用"
+      ],
+      "ranks": {
+        "02_CT影像肺结节检测技术方案": 3
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_03",
+      "question": "肺栓塞的诊断流程是怎样的？从临床评估到影像确诊。",
+      "gold_docs": [
+        "诊断流程指南：从怀疑到确诊",
+        "临床危险分层：理解sPESI评分",
+        "CTPA影像表现：从直接到间接"
+      ],
+      "hit_docs": [
+        "CTPA影像表现：从直接到间接",
+        "临床危险分层：理解sPESI评分",
+        "诊断流程指南：从怀疑到确诊"
+      ],
+      "missed_docs": [],
+      "ranks": {
+        "CTPA影像表现：从直接到间接": 3,
+        "临床危险分层：理解sPESI评分": 6,
+        "诊断流程指南：从怀疑到确诊": 1
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_04",
+      "question": "肺栓塞如何根据危险分层选择治疗方案？",
+      "gold_docs": [
+        "临床危险分层：理解sPESI评分",
+        "PE的病理分型：急性 vs. 慢性",
+        "诊断流程指南：从怀疑到确诊"
+      ],
+      "hit_docs": [
+        "PE的病理分型：急性 vs. 慢性",
+        "临床危险分层：理解sPESI评分",
+        "诊断流程指南：从怀疑到确诊"
+      ],
+      "missed_docs": [],
+      "ranks": {
+        "PE的病理分型：急性 vs. 慢性": 4,
+        "临床危险分层：理解sPESI评分": 1,
+        "诊断流程指南：从怀疑到确诊": 3
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_05",
+      "question": "CTPA影像上如何全面评估肺栓塞的严重程度？",
+      "gold_docs": [
+        "CTPA影像表现：从直接到间接",
+        "临床危险分层：理解sPESI评分",
+        "PE的病理分型：急性 vs. 慢性"
+      ],
+      "hit_docs": [
+        "CTPA影像表现：从直接到间接",
+        "临床危险分层：理解sPESI评分"
+      ],
+      "missed_docs": [
+        "PE的病理分型：急性 vs. 慢性"
+      ],
+      "ranks": {
+        "CTPA影像表现：从直接到间接": 4,
+        "临床危险分层：理解sPESI评分": 5
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_06",
+      "question": "从临床评估、D-二聚体检测到CTPA确诊，肺栓塞的完整诊断路径包括哪些步骤？",
+      "gold_docs": [
+        "诊断流程指南：从怀疑到确诊",
+        "CTPA影像表现：从直接到间接"
+      ],
+      "hit_docs": [
+        "CTPA影像表现：从直接到间接",
+        "诊断流程指南：从怀疑到确诊"
+      ],
+      "missed_docs": [],
+      "ranks": {
+        "CTPA影像表现：从直接到间接": 4,
+        "诊断流程指南：从怀疑到确诊": 1
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_07",
+      "question": "如何综合sPESI评分和血流动力学状态对肺栓塞患者进行危险分层？",
+      "gold_docs": [
+        "临床危险分层：理解sPESI评分",
+        "诊断流程指南：从怀疑到确诊"
+      ],
+      "hit_docs": [
+        "临床危险分层：理解sPESI评分",
+        "诊断流程指南：从怀疑到确诊"
+      ],
+      "missed_docs": [],
+      "ranks": {
+        "临床危险分层：理解sPESI评分": 1,
+        "诊断流程指南：从怀疑到确诊": 4
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_08",
+      "question": "深度学习模型从数据预处理、训练到Docker容器化部署的完整流程是什么？",
+      "gold_docs": [
+        "12_深度学习环境配置指南",
+        "04_系统部署运维手册",
+        "01_医学影像AI系统概述"
+      ],
+      "hit_docs": [
+        "01_医学影像AI系统概述"
+      ],
+      "missed_docs": [
+        "04_系统部署运维手册",
+        "12_深度学习环境配置指南"
+      ],
+      "ranks": {
+        "01_医学影像AI系统概述": 2
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_09",
+      "question": "CT影像的窗宽窗位设置与AI模型中的HU值归一化有什么关系？",
+      "gold_docs": [
+        "CT 窗宽窗位设置原理",
+        "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理",
+        "医学图像深度学习的实用窗口设置优化"
+      ],
+      "hit_docs": [
+        "CT 窗宽窗位设置原理",
+        "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理"
+      ],
+      "missed_docs": [
+        "医学图像深度学习的实用窗口设置优化"
+      ],
+      "ranks": {
+        "CT 窗宽窗位设置原理": 1,
+        "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理": 2
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_10",
+      "question": "U-Net和TransUNet在医学图像分割任务中各有什么优势和局限？",
+      "gold_docs": [
+        "03_U-Net医学图像分割论文笔记",
+        "06_Transformer在医学影像中的应用"
+      ],
+      "hit_docs": [
+        "03_U-Net医学图像分割论文笔记",
+        "06_Transformer在医学影像中的应用"
+      ],
+      "missed_docs": [],
+      "ranks": {
+        "03_U-Net医学图像分割论文笔记": 2,
+        "06_Transformer在医学影像中的应用": 1
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_11",
+      "question": "企业AI系统中患者数据的隐私保护和合规要求包括哪些方面？",
+      "gold_docs": [
+        "05_企业数据安全管理制度",
+        "13_企业AI伦理与合规指南"
+      ],
+      "hit_docs": [
+        "05_企业数据安全管理制度",
+        "13_企业AI伦理与合规指南"
+      ],
+      "missed_docs": [],
+      "ranks": {
+        "05_企业数据安全管理制度": 3,
+        "13_企业AI伦理与合规指南": 1
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_12",
+      "question": "RAG系统的检索增强生成架构与医学影像AI的微服务架构在设计理念上有何异同？",
+      "gold_docs": [
+        "10_RAG系统技术架构文档",
+        "16_RAG系统部署说明",
+        "09_产品用户手册"
+      ],
+      "hit_docs": [
+        "10_RAG系统技术架构文档"
+      ],
+      "missed_docs": [
+        "09_产品用户手册",
+        "16_RAG系统部署说明"
+      ],
+      "ranks": {
+        "10_RAG系统技术架构文档": 1
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_13",
+      "question": "在CTPA影像上如何通过直接征象和间接征象综合区分急性和慢性肺栓塞？",
+      "gold_docs": [
+        "CTPA影像表现：从直接到间接",
+        "PE的病理分型：急性 vs. 慢性"
+      ],
+      "hit_docs": [
+        "CTPA影像表现：从直接到间接",
+        "PE的病理分型：急性 vs. 慢性"
+      ],
+      "missed_docs": [],
+      "ranks": {
+        "CTPA影像表现：从直接到间接": 1,
+        "PE的病理分型：急性 vs. 慢性": 3
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_14",
+      "question": "医学图像标注的质量控制流程有哪些环节？标注质量如何影响AI模型性能？",
+      "gold_docs": [
+        "11_医学图像数据标注规范",
+        "08_AI模型评估与验证报告"
+      ],
+      "hit_docs": [
+        "08_AI模型评估与验证报告",
+        "11_医学图像数据标注规范"
+      ],
+      "missed_docs": [],
+      "ranks": {
+        "08_AI模型评估与验证报告": 6,
+        "11_医学图像数据标注规范": 1
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_15",
+      "question": "从DICOM原始数据到深度学习模型可用的NIfTI格式，需要经过哪些处理步骤？",
+      "gold_docs": [
+        "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理",
+        "12_深度学习环境配置指南",
+        "01_医学影像AI系统概述"
+      ],
+      "hit_docs": [
+        "01_医学影像AI系统概述",
+        "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理"
+      ],
+      "missed_docs": [
+        "12_深度学习环境配置指南"
+      ],
+      "ranks": {
+        "01_医学影像AI系统概述": 4,
+        "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理": 1
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_16",
+      "question": "AI辅助诊断系统在临床部署前需要满足哪些性能指标和合规审批要求？",
+      "gold_docs": [
+        "08_AI模型评估与验证报告",
+        "13_企业AI伦理与合规指南",
+        "04_系统部署运维手册"
+      ],
+      "hit_docs": [
+        "08_AI模型评估与验证报告",
+        "13_企业AI伦理与合规指南"
+      ],
+      "missed_docs": [
+        "04_系统部署运维手册"
+      ],
+      "ranks": {
+        "08_AI模型评估与验证报告": 5,
+        "13_企业AI伦理与合规指南": 1
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_17",
+      "question": "远程办公场景下如何通过VPN、加密和访问控制保障企业数据安全？",
+      "gold_docs": [
+        "07_员工远程办公管理规定",
+        "05_企业数据安全管理制度"
+      ],
+      "hit_docs": [
+        "05_企业数据安全管理制度",
+        "07_员工远程办公管理规定"
+      ],
+      "missed_docs": [],
+      "ranks": {
+        "05_企业数据安全管理制度": 3,
+        "07_员工远程办公管理规定": 1
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_18",
+      "question": "医学影像AI系统的Docker容器化部署涉及哪些服务组件和监控指标？",
+      "gold_docs": [
+        "04_系统部署运维手册",
+        "16_RAG系统部署说明",
+        "09_产品用户手册"
+      ],
+      "hit_docs": [
+        "04_系统部署运维手册",
+        "09_产品用户手册"
+      ],
+      "missed_docs": [
+        "16_RAG系统部署说明"
+      ],
+      "ranks": {
+        "04_系统部署运维手册": 4,
+        "09_产品用户手册": 7
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_19",
+      "question": "sPESI临床评分和CTPA影像检查在肺栓塞诊断评估中各自承担什么角色？",
+      "gold_docs": [
+        "临床危险分层：理解sPESI评分",
+        "CTPA影像表现：从直接到间接",
+        "诊断流程指南：从怀疑到确诊"
+      ],
+      "hit_docs": [
+        "CTPA影像表现：从直接到间接",
+        "临床危险分层：理解sPESI评分",
+        "诊断流程指南：从怀疑到确诊"
+      ],
+      "missed_docs": [],
+      "ranks": {
+        "CTPA影像表现：从直接到间接": 7,
+        "临床危险分层：理解sPESI评分": 3,
+        "诊断流程指南：从怀疑到确诊": 1
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_20",
+      "question": "Attention机制从NLP领域迁移到医学影像分析面临哪些挑战和限制？",
+      "gold_docs": [
+        "14_Attention机制论文笔记",
+        "06_Transformer在医学影像中的应用"
+      ],
+      "hit_docs": [
+        "06_Transformer在医学影像中的应用",
+        "14_Attention机制论文笔记"
+      ],
+      "missed_docs": [],
+      "ranks": {
+        "06_Transformer在医学影像中的应用": 1,
+        "14_Attention机制论文笔记": 8
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_21",
+      "question": "RAG系统中混合检索（向量检索+BM25）相比单一检索策略有什么优势？",
+      "gold_docs": [
+        "10_RAG系统技术架构文档",
+        "16_RAG系统部署说明"
+      ],
+      "hit_docs": [
+        "10_RAG系统技术架构文档"
+      ],
+      "missed_docs": [
+        "16_RAG系统部署说明"
+      ],
+      "ranks": {
+        "10_RAG系统技术架构文档": 1
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_22",
+      "question": "医学影像AI模型的评估需要覆盖哪些维度？如何验证跨设备和跨人群的泛化能力？",
+      "gold_docs": [
+        "08_AI模型评估与验证报告",
+        "02_CT影像肺结节检测技术方案"
+      ],
+      "hit_docs": [
+        "08_AI模型评估与验证报告"
+      ],
+      "missed_docs": [
+        "02_CT影像肺结节检测技术方案"
+      ],
+      "ranks": {
+        "08_AI模型评估与验证报告": 1
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_23",
+      "question": "NIfTI格式相比DICOM在AI工作流中有何优势？体素重采样的目的是什么？",
+      "gold_docs": [
+        "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理",
+        "01_医学影像AI系统概述",
+        "12_深度学习环境配置指南"
+      ],
+      "hit_docs": [
+        "01_医学影像AI系统概述",
+        "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理"
+      ],
+      "missed_docs": [
+        "12_深度学习环境配置指南"
+      ],
+      "ranks": {
+        "01_医学影像AI系统概述": 6,
+        "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理": 1
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_24",
+      "question": "AI伦理指南要求在临床场景中如何平衡模型性能与可解释性？",
+      "gold_docs": [
+        "13_企业AI伦理与合规指南",
+        "08_AI模型评估与验证报告"
+      ],
+      "hit_docs": [
+        "08_AI模型评估与验证报告",
+        "13_企业AI伦理与合规指南"
+      ],
+      "missed_docs": [],
+      "ranks": {
+        "08_AI模型评估与验证报告": 8,
+        "13_企业AI伦理与合规指南": 1
+      },
+      "num_retrieved": 8
+    },
+    {
+      "id": "cross_25",
+      "question": "在肺栓塞智能诊断系统中，RAG知识库检索和深度学习影像模型如何协同工作？",
+      "gold_docs": [
+        "10_RAG系统技术架构文档",
+        "01_医学影像AI系统概述",
+        "利用深度学习通过 CT 血管造影自动检测肺栓塞"
+      ],
+      "hit_docs": [
+        "01_医学影像AI系统概述",
+        "10_RAG系统技术架构文档"
+      ],
+      "missed_docs": [
+        "利用深度学习通过 CT 血管造影自动检测肺栓塞"
+      ],
+      "ranks": {
+        "01_医学影像AI系统概述": 4,
+        "10_RAG系统技术架构文档": 5
+      },
+      "num_retrieved": 8
+    }
+  ]
+}

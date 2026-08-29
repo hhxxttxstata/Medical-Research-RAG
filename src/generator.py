@@ -226,7 +226,6 @@ def build_rag_prompt(
     retrieved_chunks: list[dict[str, Any]],
     relevance: dict[str, Any] | None = None,
     use_prefix_cache: bool = True,
-    diagnosis_result: dict | None = None,
 ) -> tuple[list[dict[str, str]], dict[str, Any], dict[str, Any]]:
     """
     构建 RAG Prompt（Prompt Caching 优化版）
@@ -280,38 +279,11 @@ def build_rag_prompt(
 
     context = "\n".join(context_parts)
 
-    # ── 注入 CTPA 诊断结果（当用户上传了影像时） ──
-    diagnosis_block = ""
-    if diagnosis_result and diagnosis_result.get("success"):
-        prob = diagnosis_result["probability"]
-        pred = "阳性" if diagnosis_result["prediction"] else "阴性"
-        risk_level = "高风险" if prob >= 0.9 else "中风险" if prob >= 0.7 else "低风险" if prob >= 0.5 else "阴性"
-        num_slabs = diagnosis_result.get("num_slabs", 0)
-        inference_time = diagnosis_result.get("inference_time", 0)
-
-        diagnosis_block = (
-            "\n## CTPA 影像辅助诊断结果\n"
-            f"- 肺栓塞概率: {prob:.2%}\n"
-            f"- 分类: {pred}（{risk_level}）\n"
-            f"- 分析切片数: {num_slabs}\n"
-            f"- 模型推理耗时: {inference_time}s\n"
-        )
-        attn = diagnosis_result.get("attention_weights", [])
-        if attn:
-            max_attn = max(attn)
-            diagnosis_block += f"- 最大注意力权重: {max_attn:.4f}\n"
-
-        # 如果存在可视化 base64，不塞进 prompt（太长），只记录
-        if diagnosis_result.get("visualization"):
-            diagnosis_block += "- 可视化图像已独立返回，请参考可视化数据\n"
-
-        diagnosis_block += "\n【注意】以上结果来自 AI 辅助诊断模型，仅供参考，需结合临床判断。\n"
-
     # 稳定前缀：跨请求不变（可命中 Prompt Cache）
     stable_prefix = "请根据以下参考文档回答用户问题。\n## 参考文档\n"
 
     # 动态后缀：随查询变化
-    dynamic_suffix = f"{context if context else '（无参考文档）'}\n{diagnosis_block}\n## 用户问题\n{query}\n\n## 回答\n"
+    dynamic_suffix = f"{context if context else '（无参考文档）'}\n## 用户问题\n{query}\n\n## 回答\n"
 
     user_content = stable_prefix + dynamic_suffix if use_prefix_cache else f"{stable_prefix}{dynamic_suffix}"
 
@@ -643,12 +615,19 @@ class LLMGenerator:
         raw = self.generate_stream((messages, source_map, relevance))
         structured, valid = self._parse_json_response(raw, source_map)
 
-        # Citation enforcement：无效引用时重试一次
-        if not valid:
+        # Citation enforcement：
+        #   - JSON 合法但引用无效 → 规则剔除无效编号（零 LLM 成本，2026-08 优化：
+        #     原实现再调一次 LLM 修复，无效引用剔除即可达到"无虚构引用"目标）
+        #   - JSON 解析失败（结构错误）→ 才重试一次
+        if not valid and structured:
+            structured = self._repair_citations(structured, source_map)
+            raw = json.dumps(structured, ensure_ascii=False)
+            valid = True
+        elif not valid:
             fix_prompt = (
-                "警告：上轮输出中包含无效引用编号或缺失引用。\n"
-                "请重新输出 JSON，确保每个 evidence 条目末尾有 [N] 标记，"
-                "且 N 来自下方参考文档中的编号。\n\n"
+                "警告：上轮输出不满足要求的 JSON 结构。\n"
+                "请重新输出合法 JSON，字段为 diagnosis/confidence/evidence/suggestion，"
+                "每个 evidence 条目末尾有 [N] 标记，且 N 来自下方参考文档中的编号。\n\n"
                 "可用编号: " + ", ".join(source_map.keys())
             )
             messages = messages + [
@@ -680,6 +659,23 @@ class LLMGenerator:
                     pass
 
         return {"structured": structured, "raw": raw, "valid": valid}
+
+    @staticmethod
+    def _repair_citations(data: dict, source_map: dict) -> dict:
+        """规则修复：剔除 evidence 中不在 source_map 里的引用编号
+
+        返回原 dict（就地修改）。修复后引用要么有效要么消失，
+        不会再有"编造引用编号"——无需为此再调一次 LLM。
+        """
+        valid_range = set(source_map.keys())
+
+        def fix(s: str) -> str:
+            return re.sub(r"\[(\d+)\]", lambda m: m.group(0) if m.group(1) in valid_range else "", s)
+
+        evs = data.get("evidence")
+        if isinstance(evs, list):
+            data["evidence"] = [fix(e) if isinstance(e, str) else e for e in evs]
+        return data
 
     @staticmethod
     def _parse_json_response(raw: str, source_map: dict) -> tuple[dict, bool]:

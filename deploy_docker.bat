@@ -27,7 +27,7 @@ if errorlevel 0 (
     echo.
     echo ============================================
     echo  🌐 访问地址:
-    echo   前端: http://localhost:7860
+    echo   前端: http://localhost:3000
     echo   后端: http://localhost:8000
     echo ============================================
     echo.
@@ -35,6 +35,6 @@ if errorlevel 0 (
     echo 停止服务: docker compose down
 ) else (
     echo ❌ 部署失败
-    echo   如果网络不通，请直接双击 start.bat 启动
+    echo   如果网络不通，请直接双击 start-local.bat 启动
 )
 pause

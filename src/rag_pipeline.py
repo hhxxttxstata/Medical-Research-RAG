@@ -3,6 +3,7 @@ RAG 管道 — 编排文档加载、切分、Embedding、检索和生成
 """
 
 import os
+import re
 import time
 from typing import Any
 
@@ -20,6 +21,36 @@ from .logger import get_logger
 from .milvus_store import MilvusStore
 from .retriever import Retriever
 from .text_splitter import split_document
+
+_ENT_RE = re.compile(r"[a-z][a-z0-9\-]{2,}")
+
+
+def _entity_overlap(question: str, chunks: list[dict], window: int = 8, generic_terms: set[str] | None = None) -> float:
+    """区分性实体覆盖率：问题中的区分性实体出现在证据文本中的比例（0-1）
+
+    与 agentic_rag 的 _entity_overlap 同语义：英文词（≥3 字符）+ 中文 2-4 字片段
+    （排除通用词）。OOD 问题的实体（糖尿病肾病/诺贝尔/Kubernetes）在库内
+    证据中覆盖率趋近 0；库内术语题（GPU显存/L3级备份）覆盖率显著 > 0。
+    无区分性实体时返回 1.0（不误报）。参数由离线 81 题网格验证：
+    thresh=0.08 + window=8 → OOD 16/16 拒、库内 65/65 不误拒。
+    """
+    if not chunks:
+        return 0.0
+    generic = generic_terms or set()
+    cand = " ".join(c.get("text", "")[:800] for c in chunks[:window]).lower()
+    entities = set(_ENT_RE.findall(question.lower()))
+    for n in (4, 3, 2):
+        for i in range(len(question) - n + 1):
+            frag = question[i : i + n]
+            if not re.fullmatch(r"[\u4e00-\u9fff]+", frag):
+                continue
+            if frag in generic:
+                continue
+            entities.add(frag)
+    if not entities:
+        return 1.0
+    hit = sum(1 for e in entities if e in cand)
+    return hit / len(entities)
 
 
 def _detect_embedding_dim(embedding_provider) -> int:
@@ -54,7 +85,6 @@ class RAGPipeline:
         milvus_host: str = "localhost",
         milvus_port: str = "19530",
         milvus_lite: bool = False,
-        diagnosis_model=None,  # CTPADiagnosisModel | None
     ):
         self.data_dir = os.path.abspath(data_dir)
         self.top_k = top_k
@@ -65,7 +95,6 @@ class RAGPipeline:
         self._cache = cache_manager
         self._bm25_backend = bm25_backend
         self._bm25_index_dir = bm25_index_dir
-        self.diagnosis_model = diagnosis_model
 
         collection_name = f"rag_docs_c{chunk_min_chars}_{chunk_max_chars}"
         self.embedding_provider = get_embedding_provider(embedding_provider, embedding_model)
@@ -150,8 +179,11 @@ class RAGPipeline:
         print("=" * 60 + "\n")
         return len(all_chunks)
 
-    def _retrieve_and_prepare(self, question: str, k: int) -> dict:
+    def _retrieve_and_prepare(self, question: str, k: int, domain: str | None = None) -> dict:
         """共享检索逻辑：检索 → Small-to-Big 展开 → 相关性判断
+
+        Args:
+            domain: 知识域过滤（pe_literature / writing_guidelines 等）
 
         Returns {
             "retrieved_chunks": list[dict],
@@ -164,17 +196,17 @@ class RAGPipeline:
         cache_hit = "none"
 
         # Retrieval Cache
-        if self._cache:
+        if self._cache and not domain:
             retrieved_chunks = self._cache.retrieval.get(question, k)
             if retrieved_chunks:
                 cache_hit = "retrieval"
                 print(f"  ⚡ 检索缓存命中 ({len(retrieved_chunks)} chunks)\n")
 
         if not retrieved_chunks:
-            print(f"📡 检索相关文档 (top_k={k})...")
-            retrieved_chunks = self.retriever.retrieve(question, top_k=k)
+            print(f"📡 检索相关文档 (top_k={k}{', domain=' + domain if domain else ''})...")
+            retrieved_chunks = self.retriever.retrieve(question, top_k=k, domain=domain)
             print(f"  ✅ 检索到 {len(retrieved_chunks)} 个相关片段\n")
-            if self._cache and retrieved_chunks:
+            if self._cache and retrieved_chunks and not domain:
                 self._cache.retrieval.set(question, k, retrieved_chunks)
 
         # Small-to-Big 展开 + parent_content 去重
@@ -203,6 +235,27 @@ class RAGPipeline:
             relevance["reason"] = "LLM Query Rewriting 判定为领域外问题"
             is_refusal = True
 
+        # ── OOD 增强门（2026-08，离线 81 题验证：Refusal Acc 0.877 → 1.000，零误拒）──
+        # 背景：e5-base 对 OOD 文本语义分虚高（0.82-0.86），原相关性门禁拦不住
+        # （OOD 漏拒率 62.5%）。两条零成本规则：
+        #   1. ood_rule 命中（领域外关键词规则）且词面重叠不高 → 否决相关性
+        #   2. 区分性实体覆盖率 < 0.08（问题实体几乎不在证据中）→ 领域外
+        # 参数网格验证：thresh=0.08 + window=8 → OOD 16/16 拒、库内 65/65 不误拒。
+        # 注：只读引用 agentic 冻结模块的规则/停用词，不改冻结代码。
+        if relevance["is_relevant"]:
+            from .agentic_rag import _GENERIC_TERMS, _is_out_of_domain  # 只读引用
+
+            ood_rule = _is_out_of_domain(question)
+            ent_ov = _entity_overlap(question, retrieved_chunks, window=8, generic_terms=_GENERIC_TERMS)
+            overlap = relevance.get("overlap", 0.0)
+            if (ood_rule and overlap < 0.15) or ent_ov < 0.08:
+                relevance["is_relevant"] = False
+                relevance["reason"] = (
+                    f"OOD 增强门: ood_rule={ood_rule} entity_overlap={ent_ov:.2f} "
+                    f"word_overlap={overlap:.3f} → 证据与问题无关"
+                )
+                is_refusal = True
+
         return {
             "retrieved_chunks": retrieved_chunks,
             "relevance": relevance,
@@ -210,17 +263,16 @@ class RAGPipeline:
             "cache_hit": cache_hit,
         }
 
-    def query(self, question: str, top_k: int | None = None, ctpa_file: str | None = None) -> dict[str, Any]:
+    def query(self, question: str, top_k: int | None = None, domain: str | None = None) -> dict[str, Any]:
         start_time = time.time()
         k = top_k or self.top_k
         error = None
         is_refusal = False
         retrieved_chunks: list[dict[str, Any]] = []
         cache_hit = "none"
-        diagnosis_result = None
 
         # 1. Answer Cache
-        if self._cache:
+        if self._cache and not domain:
             try:
                 cached = self._cache.answer.get(question)
                 if cached:
@@ -235,20 +287,9 @@ class RAGPipeline:
         print(f"\n🔍 查询: {question}")
         print(f"{'=' * 60}\n")
 
-        # 1b. CTPA 诊断（可选）
-        if ctpa_file and self.diagnosis_model and self.diagnosis_model.is_loaded:
-            print(f"  🩺 加载 CTPA 影像: {ctpa_file}")
-            diagnosis_result = self.diagnosis_model.predict(ctpa_file)
-            if diagnosis_result.get("success"):
-                prob = diagnosis_result["probability"]
-                pred = "阳性" if diagnosis_result["prediction"] else "阴性"
-                print(f"  ✅ 诊断完成: PE 概率={prob:.4f} ({pred})")
-            else:
-                print(f"  ⚠️ 诊断失败: {diagnosis_result.get('error')}")
-
         try:
             # 2. 共享检索逻辑
-            prep = self._retrieve_and_prepare(question, k)
+            prep = self._retrieve_and_prepare(question, k, domain=domain)
             retrieved_chunks = prep["retrieved_chunks"]
             relevance = prep["relevance"]
             is_refusal = prep["is_refusal"]
@@ -256,7 +297,7 @@ class RAGPipeline:
 
             # 生成结构化回答
             print("🤖 生成回答...")
-            prompt_data = build_rag_prompt(question, retrieved_chunks, relevance, diagnosis_result=diagnosis_result)
+            prompt_data = build_rag_prompt(question, retrieved_chunks, relevance)
             gen = self.generator.generate_structured(prompt_data, self_reflect=True)
             answer = gen["raw"]
             structured = gen["structured"]
@@ -317,16 +358,15 @@ class RAGPipeline:
             "relevance": relevance,
             "citation_validation": citation_result,
             "cache_hit": cache_hit,
-            "diagnosis_result": diagnosis_result,
         }
 
-    def query_stream(self, question: str, top_k: int | None = None):
+    def query_stream(self, question: str, top_k: int | None = None, domain: str | None = None):
         """流式查询——yield SSE event dict，每阶段推送进度"""
         start_time = time.time()
         k = top_k or self.top_k
 
         # 1. Answer Cache check
-        if self._cache:
+        if self._cache and not domain:
             try:
                 cached = self._cache.answer.get(question)
                 if cached:
@@ -343,7 +383,7 @@ class RAGPipeline:
 
         try:
             # 2. 共享检索逻辑
-            prep = self._retrieve_and_prepare(question, k)
+            prep = self._retrieve_and_prepare(question, k, domain=domain)
             retrieved_chunks = prep["retrieved_chunks"]
             relevance = prep["relevance"]
             is_refusal = prep["is_refusal"]
@@ -362,9 +402,10 @@ class RAGPipeline:
                 gen = self.generator.generate_structured(quick_prompt_data, self_reflect=False)
                 yield {"event": "quick_answer", "data": gen["raw"]}
 
-                verbose_prompt_data = build_rag_prompt(question, retrieved_chunks, relevance)
-                gen2 = self.generator.generate_structured(verbose_prompt_data, self_reflect=True)
-                yield {"event": "verbose_answer", "data": gen2["raw"]}
+                # 性能（2026-08 优化）：原实现此处再调一次 LLM 生成 verbose 完整回答，
+                # 单请求 2 次生成 ≈ 25-60s。改为单次生成：verbose 复用 quick 结果，
+                # 前端"展开"即时展示同一答案，LLM 调用减半、延迟近半。
+                yield {"event": "verbose_answer", "data": gen["raw"]}
 
         except Exception as e:
             yield {"event": "error", "data": str(e)}

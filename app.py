@@ -1,13 +1,11 @@
 """
-FastAPI 应用入口 — RAG 问答 + CTPA 诊断
+FastAPI 应用入口 — 肺栓塞科研文献 RAG 问答助手
 接口:
   GET  /health              — 健康检查
   POST /documents/upload    — 上传文档入库
-  POST /chat                — RAG 问答（阻塞，可选附带 CTPA 影像）
+  POST /chat                — RAG 问答（阻塞）
   POST /chat/stream         — RAG 问答（SSE 流式）
-  POST /diagnosis/predict   — CTPA 影像诊断（单独）
-  POST /chat-with-ct        — RAG + CTPA 影像联合诊断
-  GET  /diagnosis/model     — 诊断模型状态
+  POST /query               — Agentic RAG 查询（LangGraph runtime）
   GET  /logs                — 请求日志
   GET  /stats               — 运行统计
 """
@@ -20,7 +18,6 @@ import os
 import sys
 import threading
 import time
-import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -47,7 +44,6 @@ except ImportError:
 
 from src.auth import verify_admin_api_key, verify_api_key
 from src.cache import CacheManager, RedisClient
-from src.diagnosis import CTPADiagnosisModel, create_diagnosis_model
 from src.document_loader import load_document
 from src.knowledge_base import KnowledgeBase
 from src.logger import get_logger
@@ -66,13 +62,20 @@ class Settings:
     log_dir: str = os.path.abspath("logs")
     embedding_provider: str = "local"
     embedding_model: str | None = None
-    top_k: int = 5
+    top_k: int = 8  # 检索深度：5 太小，同一文档的 chunk 会挤占其他来源
     chunk_min_chars: int = 300
     chunk_max_chars: int = 500
     vector_backend: str = "milvus"
-    milvus_host: str = "milvus"
-    milvus_port: str = "19530"
-    milvus_lite: bool = False
+    milvus_host: str = os.getenv("MILVUS_HOST", "milvus")
+    milvus_port: str = os.getenv("MILVUS_PORT", "19530")
+    # 本地免 Docker 模式：MILVUS_LITE=true python run.py（复用 milvus_db/ 本地文件库）
+    milvus_lite: bool = os.getenv("MILVUS_LITE", "false").lower() == "true"
+    # 服务配置对齐评测（evaluate.py：rewrite/rerank 均关闭才得到 80% Hit Rate）
+    # rewrite：Step 1-7 消融证明无正收益，服务端冻结（省 1 次 LLM + 多路检索）
+    # reranker：bge-reranker-v2-m3 CPU 上 10 对候选 ≈ 15s，默认关闭；
+    #           GPU 部署时设 RERANKER_ENABLED=true 开启
+    enable_rewrite: bool = False
+    enable_reranker: bool = os.getenv("RERANKER_ENABLED", "false").lower() == "true"
 
 
 settings = Settings()
@@ -80,12 +83,9 @@ settings = Settings()
 # ── 全局单例 ──────────────────────────────────────────
 
 pipeline: RAGPipeline | None = None
-diagnosis_model: CTPADiagnosisModel | None = None
 cache_manager = None
 reranker = None
 watcher = None
-
-_DIAGNOSIS_UPLOAD_DIR = os.path.abspath("data/diagnosis_uploads")
 
 # ── 请求/响应模型 ────────────────────────────────────
 
@@ -93,6 +93,10 @@ _DIAGNOSIS_UPLOAD_DIR = os.path.abspath("data/diagnosis_uploads")
 class ChatRequest(BaseModel):
     question: str = Field(..., min_length=1)
     top_k: int | None = Field(default=None, ge=1, le=20)
+    domain: str | None = Field(
+        default=None,
+        description="知识域过滤：pe_literature（PE 文献）/ writing_guidelines（论文写作规范），None 表示全域",
+    )
 
 
 class ChatResponse(BaseModel):
@@ -121,29 +125,6 @@ class StatsResponse(BaseModel):
     avg_response_time: float
 
 
-class DiagnosisPredictResponse(BaseModel):
-    success: bool
-    probability: float = 0.0
-    prediction: int = 0
-    threshold: float = 0.5
-    risk_level: str = ""
-    positive_voxel_ratio: float = 0.0
-    inference_time: float = 0.0
-    total_time: float = 0.0
-    filename: str = ""
-    error: str | None = None
-    visualization: dict | None = None
-
-
-class DiagnosisModelStatus(BaseModel):
-    loaded: bool
-    model_path: str | None = None
-    device: str = ""
-    input_shape: list = []
-    threshold: float = 0.5
-    error: str | None = None
-
-
 class FeedbackRequest(BaseModel):
     question: str = Field(..., min_length=1)
     answer: str = Field(..., min_length=1)
@@ -152,12 +133,16 @@ class FeedbackRequest(BaseModel):
     message_id: str = Field(default="")
 
 
+class AgentQueryRequest(BaseModel):
+    question: str = Field(..., min_length=1, description="Agentic RAG 查询问题")
+
+
 # ── FastAPI 应用 ──────────────────────────────────────
 
 app = FastAPI(
-    title="RAG 知识库问答系统",
-    description="基于检索增强生成的医学知识问答 + CTPA 辅助诊断",
-    version="1.0.0",
+    title="肺栓塞科研文献 RAG 问答助手",
+    description="面向肺栓塞中英文文献与论文写作规范的知识问答系统（仅科研辅助，不提供诊断建议）",
+    version="2.0.0",
 )
 
 _cors_origins = os.getenv("CORS_ORIGINS", "*")
@@ -215,14 +200,14 @@ async def startup():
         top_k=settings.top_k,
         chunk_min_chars=settings.chunk_min_chars,
         chunk_max_chars=settings.chunk_max_chars,
-        enable_reranker=True,
-        reranker=reranker if reranker.model_ready else None,
+        enable_rewrite=settings.enable_rewrite,
+        enable_reranker=settings.enable_reranker,
+        reranker=reranker if (reranker.model_ready and settings.enable_reranker) else None,
         cache_manager=cache_manager,
         vector_backend=settings.vector_backend,
         milvus_host=settings.milvus_host,
         milvus_port=settings.milvus_port,
         milvus_lite=settings.milvus_lite,
-        diagnosis_model=diagnosis_model if diagnosis_model and diagnosis_model.is_loaded else None,
     )
 
     # 后台初始化知识库（不阻塞服务启动）
@@ -254,10 +239,6 @@ async def startup():
     except Exception as e:
         print(f"  ⚠️ 预热失败: {e}")
 
-    # 诊断模型
-    print("\n🩺 初始化肺栓塞诊断模型...")
-    _init_diagnosis_model()
-
     # 文档监听器
     from src.watcher import ProcessedFilesTracker
 
@@ -283,17 +264,6 @@ async def shutdown():
     if watcher:
         watcher.stop()
     print("👋 API 服务已关闭")
-
-
-def _init_diagnosis_model():
-    global diagnosis_model
-    diagnosis_model = create_diagnosis_model()
-    if diagnosis_model and diagnosis_model.is_loaded:
-        print("  ✅ 肺栓塞诊断模型已加载")
-    else:
-        err = diagnosis_model.load_error if diagnosis_model else "创建失败"
-        print(f"  ⚠️  肺栓塞诊断模型未加载: {err}")
-        print("  💡 设置 PE_MODEL_PATH 环境变量")
 
 
 # ── 接口 1: 健康检查 ─────────────────────────────────
@@ -407,8 +377,14 @@ async def chat(req: ChatRequest, request: Request, _: None = Depends(verify_api_
         )
 
     log: list = []
-    log.append({"step": "检索知识库", "detail": f"top_k={req.top_k or settings.top_k}", "status": "running"})
-    result = await run_blocking(pipeline.query, question, req.top_k)
+    log.append(
+        {
+            "step": "检索知识库",
+            "detail": f"top_k={req.top_k or settings.top_k}{' / domain=' + req.domain if req.domain else ''}",
+            "status": "running",
+        }
+    )
+    result = await run_blocking(pipeline.query, question, req.top_k, req.domain)
     elapsed = round(time.time() - start, 2)
 
     log.append(
@@ -443,82 +419,6 @@ async def chat(req: ChatRequest, request: Request, _: None = Depends(verify_api_
         is_refusal=result.get("is_refusal", False),
         process_log=log,
     )
-
-
-# ── 接口 4a: RAG + CTPA 联合诊断 ─────────────────────
-
-
-class ChatWithCTRequest(BaseModel):
-    question: str = Field(..., min_length=1)
-    top_k: int | None = Field(default=None, ge=1, le=20)
-
-
-@app.post("/chat-with-ct")
-async def chat_with_ct(
-    file: UploadFile = File(...),
-    question: str = Form(...),
-    top_k: int = Form(5),
-    _: None = Depends(verify_api_key),
-):
-    """上传 CTPA 影像 + 提问，RAG 检索知识库后结合诊断结果一起回答"""
-    if pipeline is None:
-        raise HTTPException(status_code=503, detail="服务尚未初始化完成")
-    if not diagnosis_model or not diagnosis_model.is_loaded:
-        raise HTTPException(status_code=503, detail="诊断模型未加载，请先配置 PE_MODEL_PATH")
-
-    # 提示注入检测
-    is_injection, injection_reason = detect_injection(question)
-    if is_injection:
-        raise HTTPException(status_code=400, detail=f"输入被拒绝：{injection_reason}")
-
-    suffix = Path(file.filename or "").suffix.lower()
-    is_nii = suffix == ".nii" or ".nii" in (file.filename or "")
-    if not is_nii:
-        raise HTTPException(status_code=400, detail="仅支持 NIfTI 格式 (.nii / .nii.gz)")
-
-    os.makedirs(_DIAGNOSIS_UPLOAD_DIR, exist_ok=True)
-    save_path = os.path.join(_DIAGNOSIS_UPLOAD_DIR, f"{uuid.uuid4().hex}_{file.filename}")
-    content = await file.read()
-    with open(save_path, "wb") as f:
-        f.write(content)
-
-    try:
-        result = await run_blocking(pipeline.query, question, top_k, save_path)
-    finally:
-        try:
-            os.remove(save_path)
-        except Exception:
-            pass
-
-    elapsed = result.get("time", 0)
-    diag = result.get("diagnosis_result") or {}
-
-    return {
-        "success": not result.get("error"),
-        "answer": result.get("answer", ""),
-        "structured": result.get("structured", {}),
-        "sources": [
-            {"id": s["id"], "filename": s["metadata"].get("filename", ""), "score": round(s["score"], 3)}
-            for s in result.get("sources", [])
-        ],
-        "diagnosis": {
-            "probability": diag.get("probability"),
-            "prediction": diag.get("prediction"),
-            "risk_level": "高风险"
-            if diag.get("probability", 0) >= 0.9
-            else "中风险"
-            if diag.get("probability", 0) >= 0.7
-            else "低风险"
-            if diag.get("probability", 0) >= 0.5
-            else "阴性",
-            "inference_time": diag.get("inference_time"),
-            "visualization": diag.get("visualization"),
-        }
-        if diag.get("success")
-        else None,
-        "elapsed": result.get("time", elapsed),
-        "is_refusal": result.get("is_refusal", False),
-    }
 
 
 # ── 接口 4: RAG 流式问答（SSE） ────────────────────────
@@ -560,7 +460,7 @@ async def chat_stream(req: ChatRequest):
 
     async def generate():
         loop = asyncio.get_running_loop()
-        gen = pipeline.query_stream(question, req.top_k)
+        gen = pipeline.query_stream(question, req.top_k, req.domain)
         while True:
             ev = await loop.run_in_executor(_THREAD_POOL, lambda: next(gen, None))
             if ev is None:
@@ -570,84 +470,7 @@ async def chat_stream(req: ChatRequest):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-# ── 接口 5: 肺栓塞诊断 ────────────────────────────────
-
-
-@app.post("/diagnosis/predict", response_model=DiagnosisPredictResponse)
-async def diagnosis_predict(
-    file: UploadFile = File(...),
-    _: None = Depends(verify_api_key),
-):
-    global diagnosis_model
-
-    if diagnosis_model is None or not diagnosis_model.is_loaded:
-        _init_diagnosis_model()
-        if diagnosis_model is None or not diagnosis_model.is_loaded:
-            err = diagnosis_model.load_error if diagnosis_model else "模型初始化失败"
-            return DiagnosisPredictResponse(success=False, error=f"诊断模型未加载: {err}")
-
-    filename = file.filename or f"ctpa_{int(time.time())}.nii"
-    suffix = Path(filename).suffix.lower()
-    is_nii = suffix == ".nii" or any(s == ".nii" for s in Path(filename).suffixes)
-    if not is_nii and suffix != ".nii.gz":
-        return DiagnosisPredictResponse(success=False, error="仅支持 NIfTI 格式 (.nii / .nii.gz)")
-
-    os.makedirs(_DIAGNOSIS_UPLOAD_DIR, exist_ok=True)
-    save_path = os.path.join(_DIAGNOSIS_UPLOAD_DIR, f"{uuid.uuid4().hex}_{filename}")
-
-    content = await file.read()
-    with open(save_path, "wb") as f:
-        f.write(content)
-
-    try:
-        result = await run_blocking(diagnosis_model.predict, save_path, True)
-    except Exception as e:
-        try:
-            os.remove(save_path)
-        except Exception:
-            pass
-        return DiagnosisPredictResponse(success=False, error=f"推理失败: {str(e)}")
-
-    try:
-        os.remove(save_path)
-    except Exception:
-        pass
-
-    prob = result.get("probability", 0.0)
-    pred = result.get("prediction", 0)
-    risk = "高风险" if prob >= 0.9 else "中风险" if prob >= 0.7 else "低风险" if prob >= 0.5 else "阴性"
-
-    return DiagnosisPredictResponse(
-        success=result.get("success", False),
-        probability=prob,
-        prediction=pred,
-        threshold=result.get("threshold", 0.5),
-        risk_level=risk,
-        positive_voxel_ratio=result.get("mask_positive_ratio", 0.0),
-        inference_time=result.get("inference_time", 0.0),
-        total_time=result.get("total_time", 0.0),
-        filename=filename,
-        error=result.get("error"),
-        visualization=result.get("visualization"),
-    )
-
-
-@app.get("/diagnosis/model", response_model=DiagnosisModelStatus)
-async def diagnosis_model_status(_: None = Depends(verify_api_key)):
-    if diagnosis_model:
-        info = diagnosis_model.get_info()
-        return DiagnosisModelStatus(
-            loaded=info.get("loaded", False),
-            model_path=info.get("model_path"),
-            device=info.get("device", ""),
-            input_shape=list(info.get("input_shape", [])),
-            threshold=info.get("threshold", 0.5),
-            error=info.get("load_error"),
-        )
-    return DiagnosisModelStatus(loaded=False, error="诊断模型未初始化")
-
-
-# ── 接口 6: 日志查询 ─────────────────────────────────
+# ── 接口 5: 日志查询 ─────────────────────────────────
 
 
 @app.get("/logs")
@@ -763,6 +586,43 @@ async def list_feedback(
         for row in reader:
             records.append(row)
     return {"success": True, "records": records[-n:]}
+
+
+# ── Agentic Query 服务（Step 17：研究层 → 服务层） ────────────
+# 薄适配：POST /query → LangGraph Agentic RAG（v2，Step 16 parity 已验证）
+# 懒加载（首次调用 ~10-20s 加载 reranker/agent），复用服务的 Milvus 连接。
+
+
+_agent_service = None
+
+
+def _get_agent_service():
+    """懒创建 AgentQueryService（构造本身不加载模型，query 时才加载）"""
+    global _agent_service
+    if _agent_service is None:
+        from src.agent_service import AgentQueryService
+
+        _agent_service = AgentQueryService(pipeline)
+    return _agent_service
+
+
+@app.post("/query")
+async def agent_query(req: AgentQueryRequest, _: None = Depends(verify_api_key)):
+    """Agentic RAG 查询（LangGraph runtime）
+
+    返回结构化响应：answer / status(ACCEPT|ABSTAIN) / evidence / route /
+    grader_called / latency_ms。首次调用含模型加载（10-20s）。
+    """
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="服务尚未初始化完成")
+    try:
+        svc = _get_agent_service()
+        result = await run_blocking(svc.query, req.question)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Agentic 查询失败: {e}")
+    return result
 
 
 # ── 辅助 ──────────────────────────────────────────────

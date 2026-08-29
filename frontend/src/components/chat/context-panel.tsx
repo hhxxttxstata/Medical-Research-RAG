@@ -13,7 +13,6 @@ import {
   Cpu,
   Brain,
   AlertTriangle,
-  CheckCircle2,
   Lightbulb,
   Target,
   Route,
@@ -70,20 +69,6 @@ export function ContextPanel({ message, onClose }: ContextPanelProps) {
                 <div className="flex items-center gap-2 rounded-md bg-yellow-50 dark:bg-yellow-900/10 p-2 text-xs text-yellow-700 dark:text-yellow-400">
                   <AlertTriangle size={13} className="shrink-0" />
                   <span>Agent 未匹配工具，回退到 RAG 问答</span>
-                </div>
-              )}
-              {message.agentInfo.diagnosis_result && (
-                <div className="space-y-1 rounded-md bg-card border border-border p-2 text-xs">
-                  <p className="font-medium text-foreground/80">诊断结果</p>
-                  <InfoRow
-                    icon={<CheckCircle2 size={12} />}
-                    label="风险等级"
-                    value={message.agentInfo.diagnosis_result.risk_level}
-                  />
-                  <InfoRow
-                    label="概率"
-                    value={`${(message.agentInfo.diagnosis_result.probability * 100).toFixed(1)}%`}
-                  />
                 </div>
               )}
             </Section>

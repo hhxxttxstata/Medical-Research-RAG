@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════
-#  docker-compose.yml — 肺栓塞 RAG 系统部署
-# 包含: 后端 API + Next.js 前端 + Gradio 前端（可选）
+#  docker-compose.yml — 肺栓塞科研文献 RAG 问答系统部署
+# 包含: 后端 API + Next.js 前端
 # ═══════════════════════════════════════════════════════
 
 name: pe-rag-system
@@ -17,9 +17,7 @@ services:
       # bind mount: 改源码只需 restart 不用 rebuild
       - ./app.py:/app/app.py
       - ./src:/app/src
-      - ./models:/app/models:ro
       - ./data:/app/data
-      - ./chroma_db:/app/chroma_db
       - ./logs:/app/logs
       - ./eval_results:/app/eval_results
       - ./Makefile:/app/Makefile
@@ -59,25 +57,6 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
-
-  # Gradio 前端（可选，与 Next.js 二选一或并存）
-  gradio:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    container_name: gradio
-    ports:
-      - "7860:7860"
-    volumes:
-      - ./gradio_app.py:/app/gradio_app.py:ro
-    environment:
-      - API_BASE_URL=http://backend:8000
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
-    profiles:
-      - gradio  # 默认不启动: docker compose --profile gradio up -d
 
   # ── Milvus 向量数据库 ─────────────────────────────
   etcd:

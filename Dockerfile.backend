@@ -1,10 +1,9 @@
 # ═══════════════════════════════════════════════════════
 #  Dockerfile — 后端 FastAPI 服务
 # ═══════════════════════════════════════════════════════
-# 不含 torch / CUDA（诊断模块托管给本地 Python）
 FROM python:3.10-slim
 
-LABEL description="肺栓塞 RAG 问答系统 — 后端 API"
+LABEL description="肺栓塞科研文献 RAG 问答系统 — 后端 API"
 LABEL version="2.0.0"
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -30,7 +29,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # ── 源码 ──────────────────────────────────────
 COPY . .
-RUN mkdir -p /app/data /app/chroma_db /app/logs
+RUN mkdir -p /app/data /app/logs
 
 EXPOSE 8000
 

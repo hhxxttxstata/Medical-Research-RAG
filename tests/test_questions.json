@@ -68,28 +68,6 @@
     }
   },
   {
-    "id": "exact_04",
-    "question": "公司数据安全的L3级别数据包括哪些？",
-    "category": "exact_match",
-    "expected_doc": "05_企业数据安全管理制度.md",
-    "difficulty": "medium",
-    "expected_answer_keywords": [
-      "L3",
-      "数据安全",
-      "级别"
-    ],
-    "gold_evidence": {
-      "answerability": "answerable",
-      "answer_bearing_chunk_ids": [
-        "05_企业数据安全管理制度_small_2"
-      ],
-      "evidence_type": "single_chunk",
-      "chunking_failure": false,
-      "annotation_source": "llm",
-      "annotation_timestamp": "20260809_180227"
-    }
-  },
-  {
     "id": "exact_05",
     "question": "CTPA上如何区分急性和慢性肺栓塞？",
     "category": "exact_match",
@@ -292,52 +270,6 @@
     }
   },
   {
-    "id": "exact_14",
-    "question": "系统部署运维手册中对GPU显存的最低要求是多少？",
-    "category": "exact_match",
-    "expected_doc": "04_系统部署运维手册.md",
-    "difficulty": "easy",
-    "expected_answer_keywords": [
-      "GPU",
-      "显存",
-      "24GB",
-      "A100"
-    ],
-    "gold_evidence": {
-      "answerability": "answerable",
-      "answer_bearing_chunk_ids": [
-        "04_系统部署运维手册_small_1"
-      ],
-      "evidence_type": "single_chunk",
-      "chunking_failure": false,
-      "annotation_source": "llm",
-      "annotation_timestamp": "20260809_180227"
-    }
-  },
-  {
-    "id": "exact_15",
-    "question": "L3级数据的备份频率和保留时间分别是多少？",
-    "category": "exact_match",
-    "expected_doc": "05_企业数据安全管理制度.md",
-    "difficulty": "medium",
-    "expected_answer_keywords": [
-      "L3",
-      "每日",
-      "备份",
-      "90天"
-    ],
-    "gold_evidence": {
-      "answerability": "answerable",
-      "answer_bearing_chunk_ids": [
-        "05_企业数据安全管理制度_small_2"
-      ],
-      "evidence_type": "single_chunk",
-      "chunking_failure": false,
-      "annotation_source": "llm",
-      "annotation_timestamp": "20260809_180227"
-    }
-  },
-  {
     "id": "exact_16",
     "question": "Vision Transformer如何将图像转换为模型可处理的输入序列？",
     "category": "exact_match",
@@ -361,30 +293,6 @@
     }
   },
   {
-    "id": "exact_17",
-    "question": "远程办公期间员工的工作时间和在线要求是什么？",
-    "category": "exact_match",
-    "expected_doc": "07_员工远程办公管理规定.md",
-    "difficulty": "easy",
-    "expected_answer_keywords": [
-      "9:00",
-      "18:00",
-      "企业微信",
-      "在线"
-    ],
-    "gold_evidence": {
-      "answerability": "answerable",
-      "answer_bearing_chunk_ids": [
-        "07_员工远程办公管理规定_small_1",
-        "07_员工远程办公管理规定_small_2"
-      ],
-      "evidence_type": "cross_chunk",
-      "chunking_failure": false,
-      "annotation_source": "llm",
-      "annotation_timestamp": "20260809_180227"
-    }
-  },
-  {
     "id": "exact_18",
     "question": "AI模型在外部验证集上的AUC指标是多少？",
     "category": "exact_match",
@@ -399,52 +307,6 @@
       "answerability": "answerable",
       "answer_bearing_chunk_ids": [
         "08_AI模型评估与验证报告_small_1"
-      ],
-      "evidence_type": "single_chunk",
-      "chunking_failure": false,
-      "annotation_source": "llm",
-      "annotation_timestamp": "20260809_180227"
-    }
-  },
-  {
-    "id": "exact_19",
-    "question": "医学影像AI系统支持哪些影像浏览操作？",
-    "category": "exact_match",
-    "expected_doc": "09_产品用户手册.md",
-    "difficulty": "easy",
-    "expected_answer_keywords": [
-      "窗宽窗位",
-      "缩放",
-      "平移",
-      "序列切换"
-    ],
-    "gold_evidence": {
-      "answerability": "answerable",
-      "answer_bearing_chunk_ids": [
-        "09_产品用户手册_small_1"
-      ],
-      "evidence_type": "single_chunk",
-      "chunking_failure": false,
-      "annotation_source": "llm",
-      "annotation_timestamp": "20260809_180227"
-    }
-  },
-  {
-    "id": "exact_20",
-    "question": "RAG系统的文档处理管道包含哪些关键步骤？",
-    "category": "exact_match",
-    "expected_doc": "10_RAG系统技术架构文档.md",
-    "difficulty": "easy",
-    "expected_answer_keywords": [
-      "文档解析",
-      "文本切分",
-      "向量化",
-      "Embedding"
-    ],
-    "gold_evidence": {
-      "answerability": "answerable",
-      "answer_bearing_chunk_ids": [
-        "10_RAG系统技术架构文档_small_1"
       ],
       "evidence_type": "single_chunk",
       "chunking_failure": false,
@@ -476,53 +338,6 @@
     }
   },
   {
-    "id": "exact_22",
-    "question": "使用conda创建深度学习虚拟环境的完整命令是什么？",
-    "category": "exact_match",
-    "expected_doc": "12_深度学习环境配置指南.md",
-    "difficulty": "easy",
-    "expected_answer_keywords": [
-      "conda",
-      "create",
-      "环境",
-      "python"
-    ],
-    "gold_evidence": {
-      "answerability": "answerable",
-      "answer_bearing_chunk_ids": [
-        "12_深度学习环境配置指南_small_1",
-        "16_RAG系统部署说明_small_1"
-      ],
-      "evidence_type": "cross_chunk",
-      "chunking_failure": false,
-      "annotation_source": "llm",
-      "annotation_timestamp": "20260809_180227"
-    }
-  },
-  {
-    "id": "exact_23",
-    "question": "企业AI伦理的'以人为本'原则在医学影像场景中如何体现？",
-    "category": "exact_match",
-    "expected_doc": "13_企业AI伦理与合规指南.md",
-    "difficulty": "medium",
-    "expected_answer_keywords": [
-      "以人为本",
-      "辅助工具",
-      "诊断权",
-      "医生"
-    ],
-    "gold_evidence": {
-      "answerability": "answerable",
-      "answer_bearing_chunk_ids": [
-        "13_企业AI伦理与合规指南_small_1"
-      ],
-      "evidence_type": "single_chunk",
-      "chunking_failure": false,
-      "annotation_source": "llm",
-      "annotation_timestamp": "20260809_180227"
-    }
-  },
-  {
     "id": "exact_24",
     "question": "Scaled Dot-Product Attention中除以sqrt(d_k)的目的是什么？",
     "category": "exact_match",
@@ -538,74 +353,6 @@
       "answerability": "answerable",
       "answer_bearing_chunk_ids": [
         "14_Attention机制论文笔记_small_2"
-      ],
-      "evidence_type": "single_chunk",
-      "chunking_failure": false,
-      "annotation_source": "llm",
-      "annotation_timestamp": "20260809_180227"
-    }
-  },
-  {
-    "id": "exact_25",
-    "question": "Python项目中函数参数和返回值必须添加什么？",
-    "category": "exact_match",
-    "expected_doc": "15_项目开发规范与代码风格指南.md",
-    "difficulty": "easy",
-    "expected_answer_keywords": [
-      "类型注解",
-      "参数",
-      "返回值"
-    ],
-    "gold_evidence": {
-      "answerability": "answerable",
-      "answer_bearing_chunk_ids": [
-        "15_项目开发规范与代码风格指南_small_2"
-      ],
-      "evidence_type": "single_chunk",
-      "chunking_failure": false,
-      "annotation_source": "llm",
-      "annotation_timestamp": "20260809_180227"
-    }
-  },
-  {
-    "id": "exact_26",
-    "question": "RAG系统首次运行时需要下载的Embedding模型大约多大？",
-    "category": "exact_match",
-    "expected_doc": "16_RAG系统部署说明.txt",
-    "difficulty": "easy",
-    "expected_answer_keywords": [
-      "500MB",
-      "Embedding",
-      "下载",
-      "模型"
-    ],
-    "gold_evidence": {
-      "answerability": "answerable",
-      "answer_bearing_chunk_ids": [
-        "16_RAG系统部署说明_small_4"
-      ],
-      "evidence_type": "single_chunk",
-      "chunking_failure": false,
-      "annotation_source": "llm",
-      "annotation_timestamp": "20260809_180227"
-    }
-  },
-  {
-    "id": "exact_27",
-    "question": "RAG系统API的流式查询使用什么技术实现逐字输出？",
-    "category": "exact_match",
-    "expected_doc": "17_API接口设计文档.txt",
-    "difficulty": "medium",
-    "expected_answer_keywords": [
-      "SSE",
-      "流式",
-      "Server-Sent",
-      "token"
-    ],
-    "gold_evidence": {
-      "answerability": "answerable",
-      "answer_bearing_chunk_ids": [
-        "17_API接口设计文档_small_2"
       ],
       "evidence_type": "single_chunk",
       "chunking_failure": false,
@@ -869,64 +616,6 @@
     }
   },
   {
-    "id": "exact_39",
-    "question": "RAG系统架构支持哪些向量数据库的替换方案？",
-    "category": "exact_match",
-    "expected_doc": "10_RAG系统技术架构文档.md",
-    "difficulty": "easy",
-    "expected_answer_keywords": [
-      "Chroma",
-      "FAISS",
-      "Milvus",
-      "向量数据库"
-    ],
-    "gold_evidence": {
-      "answerability": "answerable",
-      "answer_bearing_chunk_ids": [
-        "10_RAG系统技术架构文档_small_3"
-      ],
-      "evidence_type": "single_chunk",
-      "chunking_failure": false,
-      "annotation_source": "llm",
-      "annotation_timestamp": "20260809_180227"
-    }
-  },
-  {
-    "id": "exact_40",
-    "question": "企业数据安全管理中，双因素认证适用于哪个安全级别的数据？",
-    "category": "exact_match",
-    "expected_doc": "05_企业数据安全管理制度.md",
-    "difficulty": "medium",
-    "expected_answer_keywords": [
-      "双因素认证",
-      "L3",
-      "访问控制",
-      "敏感"
-    ],
-    "gold_evidence": {
-      "answerability": "answerable",
-      "answer_bearing_chunk_ids": [
-        "05_企业数据安全管理制度_small_2"
-      ],
-      "evidence_type": "single_chunk",
-      "chunking_failure": false,
-      "annotation_source": "llm",
-      "annotation_timestamp": "20260809_180227"
-    }
-  },
-  {
-    "id": "cross_01",
-    "question": "医学影像AI系统的技术栈包括哪些？",
-    "category": "cross_doc",
-    "expected_doc": "",
-    "difficulty": "medium",
-    "expected_answer_keywords": [
-      "深度学习",
-      "影像",
-      "模型"
-    ]
-  },
-  {
     "id": "cross_02",
     "question": "肺结节检测使用哪些深度学习模型？",
     "category": "cross_doc",
@@ -1001,19 +690,6 @@
     ]
   },
   {
-    "id": "cross_08",
-    "question": "深度学习模型从数据预处理、训练到Docker容器化部署的完整流程是什么？",
-    "category": "cross_doc",
-    "expected_doc": "",
-    "difficulty": "medium",
-    "expected_answer_keywords": [
-      "预处理",
-      "训练",
-      "部署",
-      "Docker"
-    ]
-  },
-  {
     "id": "cross_09",
     "question": "CT影像的窗宽窗位设置与AI模型中的HU值归一化有什么关系？",
     "category": "cross_doc",
@@ -1037,32 +713,6 @@
       "Transformer",
       "分割",
       "跳跃连接"
-    ]
-  },
-  {
-    "id": "cross_11",
-    "question": "企业AI系统中患者数据的隐私保护和合规要求包括哪些方面？",
-    "category": "cross_doc",
-    "expected_doc": "",
-    "difficulty": "medium",
-    "expected_answer_keywords": [
-      "隐私",
-      "加密",
-      "去标识化",
-      "合规"
-    ]
-  },
-  {
-    "id": "cross_12",
-    "question": "RAG系统的检索增强生成架构与医学影像AI的微服务架构在设计理念上有何异同？",
-    "category": "cross_doc",
-    "expected_doc": "",
-    "difficulty": "medium",
-    "expected_answer_keywords": [
-      "RAG",
-      "微服务",
-      "检索",
-      "FastAPI"
     ]
   },
   {
@@ -1093,58 +743,6 @@
     ]
   },
   {
-    "id": "cross_15",
-    "question": "从DICOM原始数据到深度学习模型可用的NIfTI格式，需要经过哪些处理步骤？",
-    "category": "cross_doc",
-    "expected_doc": "",
-    "difficulty": "hard",
-    "expected_answer_keywords": [
-      "DICOM",
-      "HU",
-      "重采样",
-      "NIfTI"
-    ]
-  },
-  {
-    "id": "cross_16",
-    "question": "AI辅助诊断系统在临床部署前需要满足哪些性能指标和合规审批要求？",
-    "category": "cross_doc",
-    "expected_doc": "",
-    "difficulty": "hard",
-    "expected_answer_keywords": [
-      "敏感度",
-      "特异度",
-      "NMPA",
-      "审批"
-    ]
-  },
-  {
-    "id": "cross_17",
-    "question": "远程办公场景下如何通过VPN、加密和访问控制保障企业数据安全？",
-    "category": "cross_doc",
-    "expected_doc": "",
-    "difficulty": "medium",
-    "expected_answer_keywords": [
-      "VPN",
-      "加密",
-      "远程办公",
-      "数据安全"
-    ]
-  },
-  {
-    "id": "cross_18",
-    "question": "医学影像AI系统的Docker容器化部署涉及哪些服务组件和监控指标？",
-    "category": "cross_doc",
-    "expected_doc": "",
-    "difficulty": "medium",
-    "expected_answer_keywords": [
-      "Docker",
-      "GPU",
-      "Prometheus",
-      "监控"
-    ]
-  },
-  {
     "id": "cross_19",
     "question": "sPESI临床评分和CTPA影像检查在肺栓塞诊断评估中各自承担什么角色？",
     "category": "cross_doc",
@@ -1171,19 +769,6 @@
     ]
   },
   {
-    "id": "cross_21",
-    "question": "RAG系统中混合检索（向量检索+BM25）相比单一检索策略有什么优势？",
-    "category": "cross_doc",
-    "expected_doc": "",
-    "difficulty": "medium",
-    "expected_answer_keywords": [
-      "混合检索",
-      "BM25",
-      "向量检索",
-      "互补"
-    ]
-  },
-  {
     "id": "cross_22",
     "question": "医学影像AI模型的评估需要覆盖哪些维度？如何验证跨设备和跨人群的泛化能力？",
     "category": "cross_doc",
@@ -1194,45 +779,6 @@
       "泛化",
       "跨设备",
       "AUC"
-    ]
-  },
-  {
-    "id": "cross_23",
-    "question": "NIfTI格式相比DICOM在AI工作流中有何优势？体素重采样的目的是什么？",
-    "category": "cross_doc",
-    "expected_doc": "",
-    "difficulty": "hard",
-    "expected_answer_keywords": [
-      "NIfTI",
-      "DICOM",
-      "重采样",
-      "空间标准化"
-    ]
-  },
-  {
-    "id": "cross_24",
-    "question": "AI伦理指南要求在临床场景中如何平衡模型性能与可解释性？",
-    "category": "cross_doc",
-    "expected_doc": "",
-    "difficulty": "medium",
-    "expected_answer_keywords": [
-      "可解释性",
-      "伦理",
-      "热力图",
-      "诊断"
-    ]
-  },
-  {
-    "id": "cross_25",
-    "question": "在肺栓塞智能诊断系统中，RAG知识库检索和深度学习影像模型如何协同工作？",
-    "category": "cross_doc",
-    "expected_doc": "",
-    "difficulty": "hard",
-    "expected_answer_keywords": [
-      "RAG",
-      "深度学习",
-      "肺栓塞",
-      "CTPA"
     ]
   },
   {

@@ -13,11 +13,12 @@ framework-agnostic（同一套检索、hop 追踪、信号门控在两种 runtim
     节点间的状态流转 = 读写同一 AgentState —— 行为与自定义 runner 完全一致
 
 图结构：
-    START → retrieve → accumulate → evaluate → policy → [conditional edge]
-                                                        ├─ ACCEPT → finalize → END
-                                                        ├─ RETRIEVE → retrieve
-                                                        └─ DECOMPOSE → decompose → retrieve
+    START → [precheck（v2.1 专用）] → retrieve → policy → [conditional edge]
+                                          ├─ ACCEPT → finalize → END
+                                          ├─ RETRIEVE → retrieve
+                                          └─ DECOMPOSE → decompose → retrieve
     ABSTAIN（budget 耗尽）→ finalize（拒答）
+    precheck：可靠多问号 → 直接 decompose（B2，跳过全问题初始检索）；否则 retrieve
 
 用法:
     from src.langgraph_agent import LangGraphAgenticRAG
@@ -44,6 +45,7 @@ class GraphState(TypedDict):
     - final: run() 返回的结果 dict
     - _grade: 上一轮 evidence_grade 结果（跨节点传递）
     - _target_hop: RETRIEVE 的目标 hop（13D，跨节点传递）
+    - _grader_called: 本轮是否调用了 LLM grader（v2.1 cost-aware 门控）
     """
 
     state: Any
@@ -53,6 +55,7 @@ class GraphState(TypedDict):
     final: dict | None
     _grade: dict | None
     _target_hop: dict | None
+    _grader_called: bool
 
 
 class LangGraphAgenticRAG:
@@ -71,6 +74,26 @@ class LangGraphAgenticRAG:
     # ══════════════════════════════════════════════════
     #  节点（每个节点只做一件事，行为与被包装 agent 的方法一一对应）
     # ══════════════════════════════════════════════════
+
+    def _precheck_node(self, gs: GraphState) -> GraphState:
+        """B2：结构预检（v2.1 cost-aware 专用）——可靠多问号 → 直接 DECOMPOSE
+
+        与自定义 runner 的 iteration-0 预检一致：多问号是问题内在属性，
+        无需检索即可判定 → 跳过全问题初始检索，直接进 decompose 节点
+        （hop 定向检索覆盖全部证据）。route 在此记录初始动作（与自定义
+        runner 的 iteration-0 route.append 一一对应）。
+        """
+        st = gs["state"]
+        from .agentic_rag import AgenticRAG
+
+        if AgenticRAG._is_multi_part(st.original_query) and not st.decompose_attempted:
+            st.route.append("DECOMPOSE")
+            gs["decision"] = "DECOMPOSE"
+            gs["reason"] = "问题含多个独立子问题，先生成 hop plan"
+        else:
+            st.route.append("RETRIEVE")
+            gs["decision"] = ""
+        return gs
 
     def _retrieve_node(self, gs: GraphState) -> GraphState:
         """RETRIEVE：混合检索 → 证据累积（对应 AgenticRAG.run 的初始/再检索）"""
@@ -145,11 +168,35 @@ class LangGraphAgenticRAG:
         return gs
 
     def _policy_node(self, gs: GraphState) -> GraphState:
-        """policy：v2 的 Policy Node（同一个方法，同一个信号逻辑）"""
+        """policy：v2/v2.1 统一策略入口
+
+        - v2（AgenticRAG）：LLM grader 常开 + policy 决策（evaluate 节点已
+          产出 grade）
+        - v2.1（CostAwareAgenticRAG）：Cheap Signal Gate → 仅 UNCERTAIN 时
+          按需调 LLM grader/policy —— 同一图结构，策略实现不同
+        """
         st = gs["state"]
         grade = gs["_grade"] or {}
-        status, decision, mode = self._agent.policy(st.original_query, st, grade)
-        st.evidence_status = status
+        if hasattr(self._agent, "_decide_once"):
+            # v2.1 cost-aware 决策（grader 由门控按需调用；grade 原地更新）
+            from .cost_aware_agentic_rag import CostObservation
+
+            obs = CostObservation()
+            decision, mode = self._agent._decide_once(st.original_query, st, grade, obs, self._fetch_k, False)
+            status = {
+                "ACCEPT": "SUPPORTED",
+                "ABSTAIN": "UNSUPPORTED",
+                "RETRIEVE": "INSUFFICIENT",
+                "DECOMPOSE": "INSUFFICIENT",
+            }[decision]
+            st.evidence_status = status
+            # B4：跨轮累计——obs 是单轮快照，任何一轮调过 grader 即为 True
+            # （与自定义 runner 的跨轮 obs 语义一致，修复指标失真）
+            gs["_grader_called"] = bool(gs.get("_grader_called", False)) or obs.grader_called
+        else:
+            status, decision, mode = self._agent.policy(st.original_query, st, grade)
+            st.evidence_status = status
+            gs["_grader_called"] = bool(gs.get("_grader_called", False))
         gs["decision"] = decision
         gs["action_mode"] = mode
         gs["reason"] = grade.get("reason", "")
@@ -197,13 +244,30 @@ class LangGraphAgenticRAG:
 
         g.add_node("retrieve", self._retrieve_node)
         g.add_node("decompose", self._decompose_node)
-        g.add_node("evaluate", self._evaluate_node)
         g.add_node("policy", self._policy_node)
         g.add_node("finalize", self._finalize_node)
 
-        g.add_edge(START, "retrieve")
-        g.add_edge("retrieve", "evaluate")
-        g.add_edge("evaluate", "policy")
+        # v2.1 cost-aware：precheck（结构预检）→ 按需门控 grader（policy 内部）
+        # v2：LLM grader 常开 → retrieve → evaluate → policy
+        is_cost_aware = hasattr(self._agent, "_decide_once")
+        if is_cost_aware:
+            g.add_node("precheck", self._precheck_node)
+            g.add_edge(START, "precheck")
+            # B2：可靠多问号 → 直接 decompose（跳过全问题初始检索）
+            g.add_conditional_edges(
+                "precheck",
+                lambda gs: "decompose" if gs.get("decision") == "DECOMPOSE" else "retrieve",
+                {"decompose": "decompose", "retrieve": "retrieve"},
+            )
+            g.add_edge("decompose", "policy")
+            g.add_edge("retrieve", "policy")
+        else:
+            g.add_node("evaluate", self._evaluate_node)
+            g.add_edge(START, "retrieve")
+            g.add_edge("retrieve", "evaluate")
+            g.add_edge("evaluate", "policy")
+            # DECOMPOSE 执行后回到评估（plan 执行完 → completeness check）
+            g.add_edge("decompose", "evaluate")
 
         # conditional edge：policy 决策 → 路由（与 while 循环语义一致）
         g.add_conditional_edges(
@@ -216,8 +280,6 @@ class LangGraphAgenticRAG:
                 "ABSTAIN": "finalize",
             },
         )
-        # DECOMPOSE 执行后回到评估（plan 执行完 → completeness check）
-        g.add_edge("decompose", "evaluate")
 
         # 终局（finalize 无后续边 → 隐式 END）
         g.add_edge("finalize", END)
@@ -243,7 +305,10 @@ class LangGraphAgenticRAG:
         self._fetch_k = fetch_k
         st = AgentState(original_query=question)
         st.retrieval_budget = self._agent.max_iterations + 2
-        st.route.append("RETRIEVE")  # 与自定义 runner 的初始 route 一致
+        if not hasattr(self._agent, "_decide_once"):
+            # v2：无 precheck 节点，初始 route 在此记录（与自定义 runner 一致）；
+            # v2.1 由 precheck 节点按预检结果记录 RETRIEVE/DECOMPOSE
+            st.route.append("RETRIEVE")
 
         init: GraphState = {
             "state": st,
@@ -253,8 +318,10 @@ class LangGraphAgenticRAG:
             "final": None,
             "_grade": {"decision": "insufficient", "reason": "initial", "evidence_score": 0.0},
             "_target_hop": None,
+            "_grader_called": False,
         }
         out = self._graph.invoke(init)
         result = out["final"]
         result["elapsed"] = 0.0  # 保持返回契约（parity 对比用 state/answer/route）
+        result["grader_called"] = bool(out.get("_grader_called"))
         return result

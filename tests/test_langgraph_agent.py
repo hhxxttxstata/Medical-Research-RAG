@@ -62,6 +62,15 @@ def _make_agent():
     return AgenticRAG(retriever=_StubRetriever(), generator=_NoLLM(), reranker=_StubReranker(), max_iterations=2)
 
 
+def _make_cost_aware_agent():
+    """v2.1 cost-aware agent（stub 组件，无 LLM / 无 index）"""
+    from src.cost_aware_agentic_rag import CostAwareAgenticRAG
+
+    return CostAwareAgenticRAG(
+        retriever=_StubRetriever(), generator=_NoLLM(), reranker=_StubReranker(), max_iterations=2
+    )
+
+
 # ── 图结构 ──
 
 
@@ -166,3 +175,99 @@ def test_parity_ood_abstain():
     assert r1["route"] == r2["route"]
     assert r1["abstained"] == r2["abstained"]
     assert r1["answer"] == r2["answer"]
+
+
+# ── B2 / B4：cost-aware precheck + grader_called parity ──
+
+
+def test_graph_precheck_node_cost_aware():
+    """B2：cost-aware 图含 precheck 节点，且无 evaluate 节点（门控内置）"""
+    agent = _make_cost_aware_agent()
+    lg = LangGraphAgenticRAG(agent)
+    nodes = set(lg._graph.get_graph().nodes.keys())
+    assert {"precheck", "retrieve", "decompose", "policy", "finalize"} <= nodes
+    assert "evaluate" not in nodes
+
+
+def test_precheck_node_routes():
+    """B2：precheck 节点——多问号 → DECOMPOSE 直进（未检索）；普通 → 初始检索"""
+    agent = _make_cost_aware_agent()
+    lg = LangGraphAgenticRAG(agent)
+    st = AgentState(original_query="肺栓塞的诊断标准是什么？溶栓治疗的适应症有哪些？")
+    st.retrieval_budget = 4
+    gs: GraphState = {"state": st, "decision": "", "action_mode": "", "reason": "", "final": None, "_target_hop": None}
+    out = lg._precheck_node(gs)
+    assert out["decision"] == "DECOMPOSE"
+    assert st.route == ["DECOMPOSE"]
+    assert st.retrieval_history == []  # 预检不触发检索
+
+    st2 = AgentState(original_query="sPESI评分中收缩压低于多少mmHg记1分？")
+    st2.retrieval_budget = 4
+    gs2: GraphState = {
+        "state": st2,
+        "decision": "",
+        "action_mode": "",
+        "reason": "",
+        "final": None,
+        "_target_hop": None,
+    }
+    out2 = lg._precheck_node(gs2)
+    assert out2["decision"] == ""
+    assert st2.route == ["RETRIEVE"]
+
+
+def test_policy_node_grader_called_accumulates():
+    """B4：多轮决策中 grader_called 跨轮累计（第二轮 cheap 决策不覆盖第一轮）"""
+    agent = _make_cost_aware_agent()
+    lg = LangGraphAgenticRAG(agent)
+    st = AgentState(original_query="肺栓塞如何治疗？")
+    st.retrieval_budget = 4
+    gs: GraphState = {
+        "state": st,
+        "decision": "",
+        "action_mode": "",
+        "reason": "",
+        "final": None,
+        "_grade": {"decision": "insufficient", "reason": "initial", "evidence_score": 0.0},
+        "_target_hop": None,
+        "_grader_called": False,
+    }
+    # 第一轮：证据词面零重叠 → UNCERTAIN → LLM grader 被调（stub 走规则 fallback）
+    st.evidence_bank = [{"id": "x", "text": "unrelated totally different english text", "score": 0.8}]
+    st.candidates = list(st.evidence_bank)
+    lg._policy_node(gs)
+    assert gs["_grader_called"] is True
+    # 第二轮：词面重叠 + top1 高 → cheap ACCEPT（不调 grader）→ 标志必须保持 True
+    st.evidence_bank = [{"id": "y", "text": "肺栓塞抗凝治疗使用低分子肝素，肺栓塞 抗凝 方案。", "score": 0.8}]
+    st.candidates = list(st.evidence_bank)
+    gs["_grade"] = {"decision": "insufficient", "reason": "initial", "evidence_score": 0.0}
+    lg._policy_node(gs)
+    assert gs["_grader_called"] is True
+
+
+def test_parity_cost_aware_precheck_decompose():
+    """B2：cost-aware 多问号题 → 预检直进 DECOMPOSE，两种 runtime route 一致"""
+    agent = _make_cost_aware_agent()
+    lg = LangGraphAgenticRAG(agent)
+    q = "急性肺栓塞和慢性肺栓塞有什么区别？CTPA影像如何鉴别？"
+    r1 = agent.run(q, fetch_k=5, verbose=False)
+    r2 = lg.run(q, fetch_k=5, verbose=False)
+    assert r1["route"] == r2["route"], f"{r1['route']} != {r2['route']}"
+    assert r1["abstained"] == r2["abstained"]
+    assert r1["iterations"] == r2["iterations"]
+    assert r1["route"][0] == "DECOMPOSE"  # B2：跳过初始 RETRIEVE
+    # B4：grader 标志两 runtime 一致（本路径 cheap DECOMPOSE → 无 grader）
+    assert r1["observation"]["grader_called"] == r2["grader_called"]
+
+
+def test_parity_cost_aware_single_hop():
+    """cost-aware 单跳题：两种 runtime route / iterations / grader 标志一致"""
+    agent = _make_cost_aware_agent()
+    lg = LangGraphAgenticRAG(agent)
+    q = "sPESI评分中收缩压低于多少mmHg记1分？"
+    r1 = agent.run(q, fetch_k=5, verbose=False)
+    r2 = lg.run(q, fetch_k=5, verbose=False)
+    assert r1["route"] == r2["route"], f"{r1['route']} != {r2['route']}"
+    assert r1["abstained"] == r2["abstained"]
+    assert r1["iterations"] == r2["iterations"]
+    assert r1["observation"]["grader_called"] == r2["grader_called"]
