@@ -5,7 +5,8 @@ Ragas 正式评测 — 与现有评测互为交叉验证
     python eval/run_ragas.py
 
 依赖:
-    pip install ragas datasets pandas
+    pip install -r requirements.txt -r requirements-eval.txt
+    （ragas/datasets 不在主清单，CI 不安装）
 """
 
 import json

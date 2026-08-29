@@ -1,0 +1,5 @@
+# Ragas 交叉验证评测依赖（仅 eval/run_ragas.py 使用）
+# 安装：pip install -r requirements.txt -r requirements-eval.txt
+# CI 不安装本清单（langchain 全家桶拖慢解析，issue #4）
+ragas>=0.2.0,<1
+datasets>=2.14.0,<6

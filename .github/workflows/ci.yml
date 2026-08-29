@@ -9,11 +9,13 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+          cache: pip
       - name: Install ruff
         run: pip install ruff==0.15.18
       - name: Lint check
@@ -23,11 +25,13 @@ jobs:
 
   type-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+          cache: pip
       - name: Install mypy
         run: pip install mypy types-requests
       - name: Type check
@@ -35,25 +39,33 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+          cache: pip
       - name: Install dependencies
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt -r requirements-dev.txt
       - name: Run tests
-        run: pytest --cov=src --cov-report=term-missing -x
+        # 全量跑完不看中途失败（issue #4：不允许 -x 截断失败清单）；
+        # 覆盖率棘轮门禁 46% = 当前实测 48% - 2%，只升不降
+        run: pytest --cov=src --cov-report=term-missing --cov-fail-under=46
 
   qualify-rules:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+          cache: pip
+      - name: Audit bad cases registry（①收集：登记表 schema 校验）
+        run: python scripts/audit_bad_cases.py
       - name: Install dependencies
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
@@ -63,6 +75,7 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: frontend
@@ -84,12 +97,13 @@ jobs:
   docker:
     needs: [lint, type-check, test]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Build Docker image
         run: docker build -t pe-rag-backend -f Dockerfile.backend .
       - name: Trivy scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: pe-rag-backend
           format: table
