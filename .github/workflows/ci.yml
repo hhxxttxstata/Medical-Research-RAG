@@ -41,7 +41,9 @@ jobs:
         with:
           python-version: "3.10"
       - name: Install dependencies
-        run: pip install -r requirements.txt -r requirements-dev.txt
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt -r requirements-dev.txt
       - name: Run tests
         run: pytest --cov=src --cov-report=term-missing -x
 
@@ -53,7 +55,9 @@ jobs:
         with:
           python-version: "3.10"
       - name: Install dependencies
-        run: pip install -r requirements.txt -r requirements-dev.txt
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt -r requirements-dev.txt
       - name: Qualification rules gate（bad case 规则断言，无需索引/LLM）
         run: python scripts/qualify.py --rules
 
