@@ -61,6 +61,26 @@ jobs:
       - name: Qualification rules gate（bad case 规则断言，无需索引/LLM）
         run: python scripts/qualify.py --rules
 
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build（含 tsc 类型检查）
+        run: pnpm build
+
   docker:
     needs: [lint, type-check, test]
     runs-on: ubuntu-latest
