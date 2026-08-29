@@ -68,7 +68,7 @@ class Settings:
     vector_backend: str = "milvus"
     milvus_host: str = os.getenv("MILVUS_HOST", "milvus")
     milvus_port: str = os.getenv("MILVUS_PORT", "19530")
-    # 本地免 Docker 模式：MILVUS_LITE=true python run.py（复用 milvus_db/ 本地文件库）
+    # 本地免 Docker 模式：MILVUS_LITE=true python app.py（复用 milvus_db/ 本地文件库）
     milvus_lite: bool = os.getenv("MILVUS_LITE", "false").lower() == "true"
     # 服务配置对齐评测（evaluate.py：rewrite/rerank 均关闭才得到 80% Hit Rate）
     # rewrite：Step 1-7 消融证明无正收益，服务端冻结（省 1 次 LLM + 多路检索）
@@ -93,10 +93,15 @@ watcher = None
 class ChatRequest(BaseModel):
     question: str = Field(..., min_length=1)
     top_k: int | None = Field(default=None, ge=1, le=20)
+    mode: str | None = Field(
+        default=None,
+        description="问答模式：rag（检索增强，默认）/ agent（LangGraph Agentic RAG）；auto 等价 rag",
+    )
     domain: str | None = Field(
         default=None,
         description="知识域过滤：pe_literature（PE 文献）/ writing_guidelines（论文写作规范），None 表示全域",
     )
+    session_id: str | None = Field(default=None, description="前端会话标识，响应中原样回传")
 
 
 class ChatResponse(BaseModel):
@@ -106,6 +111,9 @@ class ChatResponse(BaseModel):
     elapsed: float = 0.0
     is_refusal: bool = False
     process_log: list = []
+    mode: str = "rag"
+    agent_info: dict | None = None
+    session_id: str = ""
 
 
 class HealthResponse(BaseModel):
@@ -384,6 +392,39 @@ async def chat(req: ChatRequest, request: Request, _: None = Depends(verify_api_
             process_log=[{"step": "安全检查", "detail": injection_reason, "status": "blocked"}],
         )
 
+    # Agentic 模式：路由到 LangGraph Agentic RAG（与 POST /query 同一服务）
+    if req.mode == "agent":
+        try:
+            result = await run_blocking(_get_agent_service().query, question)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Agentic 查询失败: {e}")
+        elapsed = round(time.time() - start, 2)
+        abstain = result.get("status") == "ABSTAIN"
+        route = result.get("route", [])
+        return ChatResponse(
+            success=bool(result.get("answer")),
+            answer=result.get("answer", ""),
+            sources=result.get("evidence", []),
+            elapsed=elapsed,
+            is_refusal=abstain,
+            mode="agent",
+            agent_info={
+                "status": result.get("status"),
+                "route": route,
+                "iterations": result.get("iterations", 0),
+                "grader_called": result.get("grader_called", False),
+                "latency_ms": result.get("latency_ms", 0),
+                "abstain_reason": result.get("abstain_reason"),
+            },
+            session_id=req.session_id or "",
+            process_log=[
+                {"step": "Agentic 决策", "detail": " → ".join(route) or "-", "status": "ok"},
+                {"step": "完成", "detail": f"总耗时 {elapsed}s", "status": "ok"},
+            ],
+        )
+
     log: list = []
     log.append(
         {
@@ -426,6 +467,7 @@ async def chat(req: ChatRequest, request: Request, _: None = Depends(verify_api_
         elapsed=elapsed,
         is_refusal=result.get("is_refusal", False),
         process_log=log,
+        session_id=req.session_id or "",
     )
 
 
@@ -441,13 +483,15 @@ async def chat_stream(req: ChatRequest, _: None = Depends(verify_api_key)):
     """流式 SSE 端点
 
     后端在后台线程执行 query_stream（分阶段：检索→生成→token），
-    所有事件通过 SSE 推送给前端。
+    所有事件通过 SSE 推送给前端。req.mode == "agent" 时路由到
+    LangGraph Agentic RAG（一次性 answer，无 token 流）。
 
     事件类型:
       - status:  过程状态信息（检索中/已找到 N 条/生成中）
       - token:   LLM 的一个 token
       - answer:  一次性推完整回答（拒答或缓存命中时）
       - sources: 检索到的来源
+      - agent_info: agent 模式的决策元信息（status/route/iterations 等）
       - elapsed: 总耗时
       - error:   错误消息
       - done:    结束标记
@@ -465,6 +509,30 @@ async def chat_stream(req: ChatRequest, _: None = Depends(verify_api_key)):
             yield f"data: {_sse('done', '')}\n\n"
 
         return StreamingResponse(reject(), media_type="text/event-stream")
+
+    # Agentic 模式：路由到 LangGraph Agentic RAG（一次性返回，无 token 流）
+    if req.mode == "agent":
+
+        async def agent_generate():
+            loop = asyncio.get_running_loop()
+            yield f"data: {_sse('status', 'Agentic 决策中（LangGraph runtime）')}\n\n"
+            try:
+                result = await loop.run_in_executor(_THREAD_POOL, lambda: _get_agent_service().query(question))
+            except Exception as e:  # noqa: BLE001 — 错误经 SSE 下发而非中断流
+                yield f"data: {_sse('error', f'Agentic 查询失败: {e}')}\n\n"
+                yield f"data: {_sse('done', '')}\n\n"
+                return
+            agent_info = {
+                k: result.get(k)
+                for k in ("status", "route", "iterations", "grader_called", "latency_ms", "abstain_reason")
+            }
+            yield f"data: {_sse('agent_info', agent_info)}\n\n"
+            yield f"data: {_sse('sources', result.get('evidence', []))}\n\n"
+            yield f"data: {_sse('answer', result.get('answer', ''))}\n\n"
+            yield f"data: {_sse('elapsed', round(result.get('latency_ms', 0) / 1000, 2))}\n\n"
+            yield f"data: {_sse('done', '')}\n\n"
+
+        return StreamingResponse(agent_generate(), media_type="text/event-stream")
 
     async def generate():
         loop = asyncio.get_running_loop()

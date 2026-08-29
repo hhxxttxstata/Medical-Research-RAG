@@ -127,8 +127,8 @@ deploy:
 # 系统级检索评测（57 题，纯检索，无需 LLM）
 docker exec backend python evaluate.py --skip-reindex
 
-# 完整 Pipeline 评测（含 LLM 生成）
-docker exec backend python eval/run_full_pipeline_eval.py
+# 完整评测（含重建/跳过重建，与本地一致）
+docker exec backend python evaluate.py --skip-reindex
 
 # Agentic parity 评测（串行独占）
 docker exec backend python scripts/step16_runtime_parity.py --start 1 --end 18
@@ -142,7 +142,7 @@ docker exec backend python scripts/step16_runtime_parity.py --start 1 --end 18
 # Windows
 start-local.bat
 # 或手动
-MILVUS_LITE=true python run.py
+MILVUS_LITE=true python app.py
 ```
 
 注意：Milvus Lite 单进程独占（文件锁），评测与 API 服务不可同时运行；

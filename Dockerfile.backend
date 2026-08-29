@@ -14,18 +14,19 @@ WORKDIR /app
 # ── Debian 国内镜像源 ──────────────────────────
 RUN sed -i 's|deb.debian.org|mirrors.ustc.edu.cn|g' /etc/apt/sources.list.d/debian.sources
 
-# ── 系统依赖（最小集） ──────────────────────────
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# ── 系统依赖 ──────────────────────────────────
+# 不装 build-essential：全部依赖均有 manylinux 官方 wheel，无需编译；
+# 且 build-essential 会拉入完整 perl/linux-libc-dev（trivy 扫出 10 个
+# CRITICAL，且上游均无修复版本）。基线镜像自带的 perl-base 3 个无解
+# CRITICAL 见 .trivyignore（Debian 必需包，应用不执行 perl）。
 
 # ── pip 国内镜像源 ─────────────────────────────
 RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
-# ── Python 依赖 ────────────────────────────────
-COPY requirements-docker.txt .
+# ── Python 依赖（与 CI 测试共用 requirements.txt 唯一清单）───────
+COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements-docker.txt
+    pip install --no-cache-dir -r requirements.txt
 
 # ── 源码 ──────────────────────────────────────
 COPY . .

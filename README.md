@@ -65,8 +65,9 @@ python evaluate.py --skip-reindex
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/health` | 健康检查 |
-| POST | `/chat` | RAG 问答 |
+| POST | `/chat` | 问答（`mode`: `rag` 默认检索增强 / `agent` LangGraph Agentic RAG） |
 | POST | `/chat/stream` | 流式问答（SSE） |
+| POST | `/query` | Agentic RAG 查询（结构化响应：answer / status / evidence / route） |
 | POST | `/documents/upload` | 文档入库 |
 | GET | `/knowledge-base/collections` · `/tags` | 知识库集合 / 知识域 |
 | GET | `/logs` · `/stats` | 日志 / 统计 |

@@ -42,33 +42,31 @@ export function ContextPanel({ message, onClose }: ContextPanelProps) {
           <Section title="基本信息">
             <InfoRow icon={<Clock size={13} />} label="耗时" value={`${message.elapsed?.toFixed(2) ?? "?"}s`} />
             <InfoRow icon={<Cpu size={13} />} label="模式" value={message.mode ?? "?"} badge />
-            <InfoRow icon={<Brain size={13} />} label="意图" value={message.agentInfo?.intent ?? "常规问答"} />
-            <InfoRow icon={<Target size={13} />} label="工具" value={message.agentInfo?.tool ?? "无"} />
-            {message.agentInfo?.react_steps !== undefined && (
-              <InfoRow icon={<Route size={13} />} label="ReAct 步数" value={`${message.agentInfo.react_steps}`} />
+            <InfoRow icon={<Brain size={13} />} label="决策" value={message.agentInfo?.status ?? "RAG 直答"} />
+            <InfoRow icon={<Target size={13} />} label="路由" value={message.agentInfo?.route?.join(" → ") ?? "—"} />
+            {message.agentInfo?.iterations !== undefined && (
+              <InfoRow icon={<Route size={13} />} label="决策迭代" value={`${message.agentInfo.iterations}`} />
             )}
           </Section>
 
           {/* Agent info */}
           {message.agentInfo && (
             <Section title="Agent 决策">
-              {message.agentInfo.intent && (
-                <div className="flex items-center gap-2 rounded-md bg-accent/20 p-2 text-xs">
-                  <Lightbulb size={13} className="text-primary shrink-0" />
-                  <span>
-                    识别意图: <strong>{message.agentInfo.intent}</strong>
-                    {message.agentInfo.confidence !== undefined && (
-                      <span className="text-muted-foreground">
-                        {" "}(置信度: {(message.agentInfo.confidence * 100).toFixed(0)}%)
-                      </span>
-                    )}
-                  </span>
-                </div>
-              )}
-              {message.agentInfo.fallback_to_rag && (
+              <div className="flex items-center gap-2 rounded-md bg-accent/20 p-2 text-xs">
+                <Lightbulb size={13} className="text-primary shrink-0" />
+                <span>
+                  决策状态: <strong>{message.agentInfo.status ?? "—"}</strong>
+                  {message.agentInfo.grader_called !== undefined && (
+                    <span className="text-muted-foreground">
+                      {" "}(grader: {message.agentInfo.grader_called ? "已调用" : "未调用"})
+                    </span>
+                  )}
+                </span>
+              </div>
+              {message.agentInfo.status === "ABSTAIN" && message.agentInfo.abstain_reason && (
                 <div className="flex items-center gap-2 rounded-md bg-yellow-50 dark:bg-yellow-900/10 p-2 text-xs text-yellow-700 dark:text-yellow-400">
                   <AlertTriangle size={13} className="shrink-0" />
-                  <span>Agent 未匹配工具，回退到 RAG 问答</span>
+                  <span>拒答原因: {message.agentInfo.abstain_reason}</span>
                 </div>
               )}
             </Section>

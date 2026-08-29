@@ -126,9 +126,16 @@ export function ChatMessage({ message, onFeedback }: ChatMessageProps) {
               {message.mode}
             </Badge>
           )}
-          {message.agentInfo?.tool && (
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
-              {message.agentInfo.tool}
+          {message.agentInfo?.status && (
+            <Badge
+              variant="secondary"
+              className={
+                message.agentInfo.status === "ABSTAIN"
+                  ? "text-[10px] px-1.5 py-0 h-4 bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+                  : "text-[10px] px-1.5 py-0 h-4"
+              }
+            >
+              {message.agentInfo.status}
             </Badge>
           )}
           {message.elapsed !== undefined && (
@@ -146,13 +153,13 @@ export function ChatMessage({ message, onFeedback }: ChatMessageProps) {
           </div>
         ) : (
           <>
-            {message.agentInfo?.intent && (
+            {message.agentInfo?.route && message.agentInfo.route.length > 0 && (
               <div className="mb-2">
                 <Badge
                   variant="outline"
                   className="text-[11px] bg-accent/30 border-accent text-accent-foreground"
                 >
-                  意图: {message.agentInfo.intent}
+                  路由: {message.agentInfo.route.join(" → ")}
                 </Badge>
               </div>
             )}
