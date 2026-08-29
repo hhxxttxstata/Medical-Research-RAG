@@ -1,0 +1,7 @@
+# 基础镜像（python:3.x-slim / Debian 13 trixie）自带的 perl-base 必需包漏洞。
+# 上游状态均为 affected / fix_deferred（无可用修复版本），Debian essential 包无法移除，
+# 换任何 Debian 系基础镜像（bookworm/trixie）均同样命中；应用运行时不执行 perl，
+# 攻击面需向 perl 解释器喂入构造正则，本服务无此路径。修复发布后删除对应行。
+CVE-2026-13221
+CVE-2026-42496
+CVE-2026-8376
