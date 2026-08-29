@@ -111,7 +111,11 @@ class KnowledgeBase:
             meta.update(metadata)
 
         try:
-            col = vector_store.create_collection(name, metadata=meta)
+            if hasattr(vector_store, "create_collection"):
+                col = vector_store.create_collection(name, metadata=meta)
+            else:
+                # MilvusStore 无独立 create API（集合在连接时自动创建），确保存在即可
+                col = vector_store.get_collection(name)
             col_info = _normalize_collection(col)
             logger.info(f"📚 创建集合: {name} (tags={tags})")
             return {
@@ -156,8 +160,11 @@ class KnowledgeBase:
             version = meta.get("version", 0) + 1
             meta["version"] = version
             meta["updated_at"] = datetime.now().isoformat()
-            vector_store.update_collection_metadata(collection_name, meta)
-            logger.info(f"📌 集合 {collection_name} 版本: {version}")
+            if hasattr(vector_store, "update_collection_metadata"):
+                vector_store.update_collection_metadata(collection_name, meta)
+            else:
+                # MilvusStore 无集合级 metadata 更新 API，版本号仅内存记账
+                logger.info(f"📌 集合 {collection_name} 版本（内存记账）: {version}")
             return version
         except Exception as e:
             logger.error(f"版本更新失败: {e}")

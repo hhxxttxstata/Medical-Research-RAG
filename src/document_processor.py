@@ -976,14 +976,18 @@ class SmartChunker:
 
         pending = ""  # 待合并的短段落缓冲
         pending_heading = ""
+        section_idx = 0  # 当前章节序号（level=1 节点计数，从 1 开始，用于与 parent 对齐）
 
         def flush_pending():
             nonlocal pending
             if pending.strip():
-                chunks.append(self._mk_small(filename, pending.strip(), pending_heading, len(chunks) + 1))
+                chunks.append(self._mk_small(filename, pending.strip(), pending_heading, len(chunks) + 1, section_idx))
             pending = ""
 
         for node in nodes:
+            if node.level == 1:
+                section_idx += 1
+                continue
             if node.level != 2:  # 只切分段落级
                 continue
             heading = node.heading
@@ -1010,7 +1014,7 @@ class SmartChunker:
                 if len(buffer) + len(sent) > small_max and buffer:
                     # 尾部不足 small_min 的碎块并入前一个 chunk（保留内容）
                     if len(buffer) >= small_min:
-                        chunks.append(self._mk_small(filename, buffer.strip(), heading, len(chunks) + 1))
+                        chunks.append(self._mk_small(filename, buffer.strip(), heading, len(chunks) + 1, section_idx))
                     elif chunks:
                         chunks[-1]["text"] += "\n\n" + buffer.strip()
                     buffer = sent
@@ -1019,7 +1023,7 @@ class SmartChunker:
 
             if buffer.strip():
                 if len(buffer.strip()) >= small_min:
-                    chunks.append(self._mk_small(filename, buffer.strip(), heading, len(chunks) + 1))
+                    chunks.append(self._mk_small(filename, buffer.strip(), heading, len(chunks) + 1, section_idx))
                 elif chunks:
                     chunks[-1]["text"] += "\n\n" + buffer.strip()
 
@@ -1027,8 +1031,14 @@ class SmartChunker:
         return chunks
 
     @staticmethod
-    def _mk_small(filename: str, text: str, heading: str, chunk_id: int) -> dict[str, Any]:
-        """构造 small chunk 字典"""
+    def _mk_small(
+        filename: str,
+        text: str,
+        heading: str,
+        chunk_id: int,
+        section_idx: int,
+    ) -> dict[str, Any]:
+        """构造 small chunk 字典（parent_id 按章节序号与 parent 对齐）"""
         return {
             "chunk_id": f"{filename}_small_{chunk_id}",
             "text": text,
@@ -1036,7 +1046,7 @@ class SmartChunker:
             "metadata": {
                 "filename": filename,
                 "heading": heading,
-                "parent_id": f"{filename}_parent_{chunk_id // 3}",
+                "parent_id": f"{filename}_parent_{section_idx}",
                 "chunk_index": chunk_id,
                 "summary": text[:80],
             },
@@ -1049,70 +1059,56 @@ class SmartChunker:
         parent_max: int,
         doc_metadata: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        """从段落聚合生成 parent chunks"""
+        """从段落聚合生成 parent chunks（chunk_id 按章节序号与 small 的 parent_id 对齐）"""
         chunks = []
-        chunk_id = 0
+        chunk_count = 0  # 全局 parent 计数（metadata.chunk_index 用）
+        section_idx = 0  # 章节序号（level=1 节点计数）
+        seg = 1  # 同章节内段号（超 parent_max 切分时递增）
         buffer = ""
         current_heading = ""
         # 使用实际文件名保证跨文档唯一
         file_stem = os.path.splitext(os.path.basename(doc_metadata.get("file_path", "")))[0]
         filename = file_stem or doc_metadata.get("title", "doc")
 
+        def emit_parent(text: str, heading: str) -> None:
+            nonlocal chunk_count, seg
+            chunk_count += 1
+            chunk_id = f"{filename}_parent_{section_idx}" if seg == 1 else f"{filename}_parent_{section_idx}_{seg}"
+            chunks.append(
+                {
+                    "chunk_id": chunk_id,
+                    "text": text,
+                    "type": "parent",
+                    "metadata": {
+                        "filename": file_stem or doc_metadata.get("title", filename),
+                        "heading": heading,
+                        "chunk_index": chunk_count,
+                    },
+                }
+            )
+
         for node in nodes:
             if node.level == 1:
                 # 遇到新章节，如果 buffer 够大就保存
                 if buffer and len(buffer) >= parent_min:
-                    chunk_id += 1
-                    chunks.append(
-                        {
-                            "chunk_id": f"{filename}_parent_{chunk_id}",
-                            "text": buffer.strip(),
-                            "type": "parent",
-                            "metadata": {
-                                "filename": file_stem or doc_metadata.get("title", filename),
-                                "heading": current_heading,
-                                "chunk_index": chunk_id,
-                            },
-                        }
-                    )
-                    buffer = ""
+                    emit_parent(buffer.strip(), current_heading)
+                buffer = ""
+                seg = 1
                 current_heading = node.text
+                section_idx += 1
                 continue
 
             if node.level == 2:
                 if len(buffer) + len(node.text) > parent_max and buffer:
                     if len(buffer) >= parent_min:
-                        chunk_id += 1
-                        chunks.append(
-                            {
-                                "chunk_id": f"{filename}_parent_{chunk_id}",
-                                "text": buffer.strip(),
-                                "type": "parent",
-                                "metadata": {
-                                    "filename": file_stem or doc_metadata.get("title", filename),
-                                    "heading": current_heading,
-                                    "chunk_index": chunk_id,
-                                },
-                            }
-                        )
+                        emit_parent(buffer.strip(), current_heading)
+                        seg += 1
                     buffer = node.text
                 else:
                     buffer += "\n\n" + node.text if buffer else node.text
 
         if buffer.strip() and len(buffer.strip()) >= parent_min:
-            chunk_id += 1
-            chunks.append(
-                {
-                    "chunk_id": f"{filename}_parent_{chunk_id}",
-                    "text": buffer.strip(),
-                    "type": "parent",
-                    "metadata": {
-                        "filename": file_stem or doc_metadata.get("title", filename),
-                        "heading": current_heading,
-                        "chunk_index": chunk_id,
-                    },
-                }
-            )
+            emit_parent(buffer.strip(), current_heading)
 
         return chunks
 

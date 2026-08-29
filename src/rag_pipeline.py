@@ -204,7 +204,8 @@ class RAGPipeline:
 
         if not retrieved_chunks:
             print(f"📡 检索相关文档 (top_k={k}{', domain=' + domain if domain else ''})...")
-            retrieved_chunks = self.retriever.retrieve(question, top_k=k, domain=domain)
+            ood_state: dict = {}
+            retrieved_chunks = self.retriever.retrieve(question, top_k=k, domain=domain, ood_state=ood_state)
             print(f"  ✅ 检索到 {len(retrieved_chunks)} 个相关片段\n")
             if self._cache and retrieved_chunks and not domain:
                 self._cache.retrieval.set(question, k, retrieved_chunks)
@@ -230,7 +231,7 @@ class RAGPipeline:
         # 相关性判断
         relevance = compute_relevance(question, retrieved_chunks)
         is_refusal = False
-        if getattr(self.retriever, "_out_of_domain", False):
+        if ood_state.get("out_of_domain"):
             relevance["is_relevant"] = False
             relevance["reason"] = "LLM Query Rewriting 判定为领域外问题"
             is_refusal = True

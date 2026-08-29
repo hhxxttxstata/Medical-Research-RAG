@@ -165,6 +165,17 @@ class EmbeddingCache:
                 pass
         self._mem.set(key, embedding, ttl=ttl or self.MEM_TTL)
 
+    def clear(self) -> None:
+        """清空内存 + Redis（重建索引后调用，防止陈旧 embedding）"""
+        self._mem.clear()
+        if RedisClient.is_enabled():
+            try:
+                client = RedisClient.get_client()
+                for k in client.scan_iter(f"{self.REDIS_PREFIX}*"):
+                    client.delete(k)
+            except Exception:
+                pass
+
 
 # ═══════════════════════════════════════════════════
 #  检索结果缓存
@@ -381,10 +392,10 @@ class CacheManager:
         self.answer = AnswerCache(embedding_fn=embedding_fn)
 
     def invalidate_all(self) -> None:
-        """重建索引后清除所有缓存"""
-        self.embedding._mem.clear()
-        self.retrieval._mem.clear()
-        # Redis 不做全量清理（避免生产影响），只清内存
+        """重建索引后清除所有缓存（内存 + Redis，防止陈旧检索/回答）"""
+        self.embedding.clear()
+        self.retrieval.clear()
+        self.answer.clear()
 
     def clear_retrieval(self, query: str | None = None) -> None:
         """增量文档后使相关检索结果失效"""
