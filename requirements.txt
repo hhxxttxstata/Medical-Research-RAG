@@ -1,26 +1,24 @@
 # RAG 系统运行时依赖 — 唯一清单（CI 测试与 Docker 镜像共用）
-# 开发/测试依赖见 requirements-dev.txt
-# 版本下限与本地开发环境对齐；不要精确锁死小版本（openai==1.30.0 曾与
-# ragas→instructor 的传递约束组合爆炸，pip 解析超过 1 小时超时）
-sentence-transformers>=5.4.0
-pymupdf>=1.25.0
+# 开发/测试依赖见 requirements-dev.txt；Ragas 评测依赖见 requirements-eval.txt
+# 版本范围与本地开发环境对齐：下限为已验证可用的最低版本，上界防未来大版本
+# 破坏性变更把 CI 依赖解析拖入回溯（issue #4：无上界曾是 52 分钟解析超时的诱因之一）
+sentence-transformers>=5.4.0,<6
+pymupdf>=1.25.0,<2
+# 不锁死小版本：精确锁版会与 ragas→instructor 的传递约束组合爆炸（issue #2）
 openai>=2.0.0,<3
-python-dotenv>=1.2.0
-rank-bm25>=0.2.2
-whoosh>=0.7.8
-fastapi>=0.135.0
-uvicorn[standard]>=0.49.0
-python-multipart>=0.0.20
-torch>=2.0.0
-watchdog>=6.0.0
-redis>=5.0.0
-pymilvus>=2.5.0
+python-dotenv>=1.2.0,<2
+rank-bm25>=0.2.2,<1
+whoosh>=0.7.8,<3
+fastapi>=0.135.0,<1
+uvicorn[standard]>=0.49.0,<1
+python-multipart>=0.0.20,<1
+torch>=2.0.0,<3
+watchdog>=6.0.0,<7
+redis>=5.0.0,<9
+pymilvus>=2.5.0,<4
 # LangGraph Runtime Adapter（Agentic RAG orchestration runtime）
-langgraph>=1.0.0
-# RAG 评测（Ragas 交叉验证：eval/run_ragas.py）
-ragas>=0.2.0
-datasets>=2.14.0
+langgraph>=1.0.0,<2
 # 可观测性（可选，不影响核心功能）
-opentelemetry-api>=1.30.0
-opentelemetry-sdk>=1.30.0
-opentelemetry-instrumentation-fastapi>=0.50b0
+opentelemetry-api>=1.30.0,<2
+opentelemetry-sdk>=1.30.0,<2
+opentelemetry-instrumentation-fastapi>=0.50b0,<1
