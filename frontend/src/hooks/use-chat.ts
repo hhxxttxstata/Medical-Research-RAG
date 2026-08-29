@@ -72,7 +72,11 @@ export function useChat() {
               // 检索来源文档（原实现丢弃该事件 → 前端看不到引用来源）
               const srcs: Source[] = (Array.isArray(data) ? data : []).map((s: Record<string, unknown>) => ({
                 id: String(s.id ?? ""),
-                filename: String((s.metadata as Record<string, unknown> | undefined)?.filename ?? ""),
+                filename: String(
+                  (s.metadata as Record<string, unknown> | undefined)?.filename ??
+                    (s.filename as string | undefined) ??
+                    "",
+                ),
                 score: Number(s.score ?? 0),
                 text: String(s.text ?? ""),
               }))
@@ -90,10 +94,18 @@ export function useChat() {
                     : m,
                 ),
               )
+            } else if (event === "agent_info") {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMsgId ? { ...m, agentInfo: data as AgentInfo, mode: "agent" } : m,
+                ),
+              )
             } else if (event === "answer") {
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === assistantMsgId ? { ...m, content: data, isStreaming: false } : m,
+                  m.id === assistantMsgId
+                    ? { ...m, content: data, isStreaming: false, mode: mode === "agent" ? "agent" : "rag" }
+                    : m,
                 ),
               )
             } else if (event === "error") {
@@ -125,7 +137,15 @@ export function useChat() {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantMsgId
-              ? { ...m, content: res.answer, sources: res.sources, elapsed: res.elapsed, mode: res.mode, isStreaming: false }
+              ? {
+                  ...m,
+                  content: res.answer,
+                  sources: res.sources,
+                  elapsed: res.elapsed,
+                  mode: res.mode,
+                  agentInfo: res.agent_info,
+                  isStreaming: false,
+                }
               : m,
           ),
         )

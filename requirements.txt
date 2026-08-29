@@ -1,24 +1,26 @@
-# RAG 系统依赖
-sentence-transformers==3.0.1
-pypdf==4.3.1
-# 不锁死小版本：==1.30.0 会与 ragas→instructor 的 openai/jiter 约束组合爆炸，pip 解析超 1 小时超时（CI 卡死根因）
-openai>=1.30.0,<3
-python-dotenv==1.0.1
+# RAG 系统运行时依赖 — 唯一清单（CI 测试与 Docker 镜像共用）
+# 开发/测试依赖见 requirements-dev.txt
+# 版本下限与本地开发环境对齐；不要精确锁死小版本（openai==1.30.0 曾与
+# ragas→instructor 的传递约束组合爆炸，pip 解析超过 1 小时超时）
+sentence-transformers>=5.4.0
+pymupdf>=1.25.0
+openai>=2.0.0,<3
+python-dotenv>=1.2.0
 rank-bm25>=0.2.2
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
-python-multipart>=0.0.12
-torch>=1.10.0
+whoosh>=0.7.8
+fastapi>=0.135.0
+uvicorn[standard]>=0.49.0
+python-multipart>=0.0.20
+torch>=2.0.0
 watchdog>=6.0.0
 redis>=5.0.0
-whoosh>=0.7.8
-pymilvus>=2.4.0
-# LangGraph Runtime Adapter（Step 16：Agentic RAG orchestration runtime）
+pymilvus>=2.5.0
+# LangGraph Runtime Adapter（Agentic RAG orchestration runtime）
 langgraph>=1.0.0
 # RAG 评测（Ragas 交叉验证：eval/run_ragas.py）
 ragas>=0.2.0
 datasets>=2.14.0
-# 可观测性（可选）
+# 可观测性（可选，不影响核心功能）
 opentelemetry-api>=1.30.0
 opentelemetry-sdk>=1.30.0
 opentelemetry-instrumentation-fastapi>=0.50b0

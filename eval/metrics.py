@@ -47,7 +47,6 @@ def doc_hit(expected_doc: str, sources: list[dict[str, Any]]) -> bool:
     """expected_doc（可能带扩展名）是否命中任一检索来源的 filename
 
     与 _hit_rank 同一语义：比较完整名与去扩展名两种形式。
-    （issue #2 修复：此前 run_full_pipeline_eval 用带扩展名子串匹配恒失败）
     """
     if not expected_doc:
         return False
@@ -57,7 +56,6 @@ def doc_hit(expected_doc: str, sources: list[dict[str, Any]]) -> bool:
 def _hit_rank(r: dict[str, Any]) -> int | None:
     """expected_doc 在检索结果中的首次出现位置（从 1 开始），未命中返回 None
 
-    与 evaluate_system.py 的 expected_hit 判定保持同一语义：
     expected_doc 带扩展名（.md/.txt），sources 的 filename 不带，
     故匹配时同时比较「完整名」与「去扩展名」两种形式。
     """

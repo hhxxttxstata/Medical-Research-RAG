@@ -4,7 +4,7 @@ export interface ChatRequest {
   question: string
   top_k?: number | null
   mode?: "auto" | "rag" | "agent"
-  report_type?: string | null
+  session_id?: string | null
 }
 
 export interface Source {
@@ -16,13 +16,12 @@ export interface Source {
 }
 
 export interface AgentInfo {
-  intent?: string
-  tool?: string
-  report_type?: string
-  confidence?: number
-  react_steps?: number
-  react_termination?: string
-  fallback_to_rag?: boolean
+  status?: string
+  route?: string[]
+  iterations?: number
+  grader_called?: boolean
+  latency_ms?: number
+  abstain_reason?: string | null
 }
 
 export interface ProcessLogEntry {

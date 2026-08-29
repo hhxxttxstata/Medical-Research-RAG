@@ -12,7 +12,7 @@ rem   - 关闭窗口即停止对应服务
 rem ═══════════════════════════════════════════════════════════
 
 echo [1/2] 启动后端 (FastAPI :8000)...
-start "PE-Backend :8000" cmd /k "set MILVUS_LITE=true&& set HF_HUB_OFFLINE=1&& .venv\Scripts\python.exe run.py"
+start "PE-Backend :8000" cmd /k "set MILVUS_LITE=true&& set HF_HUB_OFFLINE=1&& .venv\Scripts\python.exe app.py"
 
 echo [2/2] 启动前端 (Next.js :3000)...
 pushd frontend
