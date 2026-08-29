@@ -100,8 +100,9 @@ class TestQueryRewriting:
             enable_reranker=False,
         )
         assert hr._can_rewrite() is False
-        queries = hr._rewrite_query("测试查询")
+        queries, ood = hr._rewrite_query("测试查询")
         assert queries == ["测试查询"]
+        assert ood is False
 
     def test_parse_multi_line(self):
         """多行输出解析为多条 query"""
@@ -116,7 +117,7 @@ class TestQueryRewriting:
             generator=gen,
             enable_reranker=False,
         )
-        queries = hr._rewrite_query("看看CT")
+        queries, _ = hr._rewrite_query("看看CT")
         assert len(queries) == 3
         assert "CTPA" in queries[0] or "肺栓塞" in queries[0]
 
@@ -133,7 +134,7 @@ class TestQueryRewriting:
             generator=gen,
             enable_reranker=False,
         )
-        queries = hr._rewrite_query("什么是肺栓塞")
+        queries, _ = hr._rewrite_query("什么是肺栓塞")
         assert len(queries) == 1
 
     def test_parse_strips_numbering(self):
@@ -149,7 +150,7 @@ class TestQueryRewriting:
             generator=gen,
             enable_reranker=False,
         )
-        queries = hr._rewrite_query("诊断方法")
+        queries, _ = hr._rewrite_query("诊断方法")
         assert "1." not in queries[0]
         assert "2." not in queries[1]
 
@@ -166,8 +167,9 @@ class TestQueryRewriting:
             generator=FailingGenerator(),
             enable_reranker=False,
         )
-        queries = hr._rewrite_query("原始查询")
+        queries, ood = hr._rewrite_query("原始查询")
         assert queries == ["原始查询"]
+        assert ood is False
 
     def test_empty_response_fallback(self):
         """LLM 返回空内容时回退"""
@@ -182,7 +184,7 @@ class TestQueryRewriting:
             generator=gen,
             enable_reranker=False,
         )
-        queries = hr._rewrite_query("test")
+        queries, _ = hr._rewrite_query("test")
         assert queries == ["test"]
 
     def test_prompt_contains_query(self):

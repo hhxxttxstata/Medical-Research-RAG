@@ -279,6 +279,8 @@ class MilvusStore:
             self._client.drop_collection(target)
             if target == self.collection_name:
                 self._collection = None
+                # 复位加载标记：重建集合后必须重新 load，否则检索静默返回空
+                self._loaded_once = False
             print(f"  🗑️ 已删除 Milvus 集合 '{target}'")
             self._connected = False
         except Exception as e:

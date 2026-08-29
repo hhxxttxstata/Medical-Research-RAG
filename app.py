@@ -299,7 +299,7 @@ async def upload_document(
     if pipeline is None:
         raise HTTPException(status_code=503, detail="服务尚未初始化完成")
 
-    filename = file.filename or f"upload_{int(time.time())}"
+    filename = Path(file.filename or f"upload_{int(time.time())}").name  # basename 净化，防路径穿越
     suffix = Path(filename).suffix.lower()
     if suffix not in (".pdf", ".md", ".txt"):
         raise HTTPException(status_code=400, detail=f"不支持 {suffix}，支持 PDF/MD/TXT")
@@ -308,7 +308,14 @@ async def upload_document(
     if os.path.exists(save_path):
         save_path = os.path.join(settings.upload_dir, f"{Path(filename).stem}_{int(time.time())}{suffix}")
 
-    content = await file.read()
+    # 流式读取 + 大小限制，防内存 DoS（50 MB 上限）
+    max_bytes = 50 * 1024 * 1024
+    content = bytearray()
+    while chunk := await file.read(1024 * 1024):
+        content.extend(chunk)
+        if len(content) > max_bytes:
+            raise HTTPException(status_code=413, detail="文件过大，上限 50 MB")
+    content = bytes(content)
     with open(save_path, "wb") as f:
         f.write(content)
 
@@ -429,7 +436,7 @@ def _sse(event: str, data) -> str:
 
 
 @app.post("/chat/stream")
-async def chat_stream(req: ChatRequest):
+async def chat_stream(req: ChatRequest, _: None = Depends(verify_api_key)):
     """流式 SSE 端点
 
     后端在后台线程执行 query_stream（分阶段：检索→生成→token），

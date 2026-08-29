@@ -167,13 +167,18 @@ class Retriever:
         self._bm25_meta: dict[str, dict] = {}
         self._original_query: str = ""
         self._was_rewritten: bool = False
-        self._out_of_domain: bool = False
 
     # ══════════════════════════════════════════════════
     #  主入口
     # ══════════════════════════════════════════════════
 
-    def retrieve(self, query: str, top_k: int | None = None, domain: str | None = None) -> list[dict[str, Any]]:
+    def retrieve(
+        self,
+        query: str,
+        top_k: int | None = None,
+        domain: str | None = None,
+        ood_state: dict | None = None,
+    ) -> list[dict[str, Any]]:
         """三级召回流水线
 
         1. Rewrite Gate — 规则判断是否需要改写；若初始检索分低也触发
@@ -183,6 +188,8 @@ class Retriever:
         Args:
             domain: 知识域过滤（pe_literature / writing_guidelines 等，
                 取 chunk metadata.domain；None 表示不过滤）
+            ood_state: 可选请求级字典；改写判定为领域外时写入
+                ood_state["out_of_domain"]=True（避免实例属性跨请求污染）
         """
         k = top_k or self.top_k
 
@@ -197,7 +204,7 @@ class Retriever:
             results = _filter_by_domain(results, domain)
             for r in results:
                 r.pop("_rrf_score", None)
-                r.pop("_retriever", None)
+            # 注：保留 _retriever 字段（generator.compute_relevance 的 has_bm25_support 依赖它）
             # 文档级多样性（与完整分支一致）
             diverse = self._diversify_by_doc(results, max_per_doc=self.max_per_doc)
             if len(diverse) < k:
@@ -215,7 +222,12 @@ class Retriever:
 
         # ── 阶段 0: Rewrite Gate ──
         needs_rewrite = self._can_rewrite() and self._rewrite_gate(query)
-        search_queries = self._rewrite_query(query) if needs_rewrite else [query]
+        if needs_rewrite:
+            search_queries, out_of_domain = self._rewrite_query(query)
+            if ood_state is not None:
+                ood_state["out_of_domain"] = out_of_domain
+        else:
+            search_queries = [query]
 
         # 改写后原始 query 也要纳入检索——改写是"辅助"不是"替代"，
         # 防止 3 条改写都偏离时丢失原始表达（术语精确题尤其依赖原文）
@@ -273,10 +285,10 @@ class Retriever:
         candidates = all_results[: self.rerank_top_k]
         reranked = self._rerank(query, candidates, k) if self._can_rerank() and len(candidates) > k else candidates[:k]
 
-        # 清理内部字段
+        # 清理内部字段（保留 _retriever：generator.compute_relevance 的
+        # has_bm25_support 双重确认逻辑依赖它）
         for r in reranked:
             r.pop("_rrf_score", None)
-            r.pop("_retriever", None)
 
         return reranked
 
@@ -321,17 +333,17 @@ class Retriever:
         ]
         return any(re.search(pat, query, re.IGNORECASE) for pat in complex_patterns)
 
-    def _rewrite_query(self, query: str) -> list[str]:
+    def _rewrite_query(self, query: str) -> tuple[list[str], bool]:
         """调用 LLM 将用户问题改写为检索友好查询
 
         优先使用 rewrite_generator（专用于改写的小模型），
         未设置时回退到主 generator（DeepSeek 等）。
 
-        返回 1-3 条搜索 query。LLM 失败时回退到 [原始 query]。
+        返回 (改写后的 1-3 条 query, 是否判定为领域外)。
+        LLM 失败时回退到 ([原始 query], False)。
         """
         llm = self.rewrite_generator or self.generator
         self._was_rewritten = False
-        self._out_of_domain = False
         try:
             response = llm.chat(
                 messages=[
@@ -342,7 +354,7 @@ class Retriever:
                 max_tokens=256,
             )
         except Exception:
-            return [query]
+            return [query], False
 
         parsed = self._parse_rewrite_response(response)
         if parsed:
@@ -350,13 +362,12 @@ class Retriever:
             stripped = query.strip()
             if len(parsed) == 1 and parsed[0].strip() == stripped:
                 print("  ✏️  Query Rewriting: '系统判定为领域外问题，保持原样'")
-                self._out_of_domain = True
-                return [query]
+                return [query], True
             print(f"  ✏️  Query Rewriting: '{query[:40]}...' → {parsed}")
             self._was_rewritten = True
-            return parsed
+            return parsed, False
 
-        return [query]
+        return [query], False
 
     @staticmethod
     def _parse_rewrite_response(response: str) -> list[str] | None:

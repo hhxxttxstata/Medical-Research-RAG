@@ -49,8 +49,10 @@ for i, q in enumerate(questions):
 
     expected_doc = q.get("expected_doc", "")
     sources = result.get("sources", [])
+    # expected_doc 形如 "xxx.md"，而 filename 是去扩展名的 stem——需先去掉扩展名再匹配
+    expected_stem = Path(expected_doc).stem if expected_doc else ""
     expected_hit = (
-        bool(expected_doc and any(expected_doc in s.get("metadata", {}).get("filename", "") for s in sources))
+        bool(expected_stem and any(expected_stem in s.get("metadata", {}).get("filename", "") for s in sources))
         if expected_doc
         else None
     )

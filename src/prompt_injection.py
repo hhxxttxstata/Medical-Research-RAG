@@ -30,7 +30,7 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern]] = [
         re.compile(r"you\s+are\s+(now|not\s+required\s+to)\b.*(doctor|assistant|expert|ai)", re.I | re.DOTALL),
     ),
     ("system_prompt_override", re.compile(r"new\s+(system\s+)?(prompt|instruction|rule)", re.I)),
-    ("system_prompt_override", re.compile(r"override", re.I)),
+    ("system_prompt_override", re.compile(r"\boverride\b", re.I)),
     (
         "system_prompt_override",
         re.compile(
@@ -86,6 +86,53 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern]] = [
     ),
     ("prompt_leak", re.compile(r"print\s+(your\s+)?(instructions|directives|guidelines|rules)", re.I)),
     ("prompt_leak", re.compile(r"(show|reveal|output)\s+(me\s+)?(the\s+)?(initial|first)\s+(prompt|message)", re.I)),
+    # ── 中文注入模式 ──
+    (
+        "system_prompt_override",
+        re.compile(
+            r"(忽略|忘记|无视|遗忘|覆盖|跳过)(之前|先前|所有|以上|任何|一切|的)*?(指令|规则|要求|提示词|提示|系统提示|设定)",
+            re.I,
+        ),
+    ),
+    (
+        "system_prompt_override",
+        re.compile(
+            r"(你|您)(现在|从现在起|接下来|开始)?(要|必须|请)?(扮演|假装|作为|当|是)(一个|一名)?(医生|专家|助手|AI|人工智能)",
+            re.I,
+        ),
+    ),
+    (
+        "system_prompt_override",
+        re.compile(r"(新的|新)(系统提示|指令|规则|要求)", re.I),
+    ),
+    (
+        "jailbreak",
+        re.compile(r"(不受|没有|无需)(任何)?(限制|约束|边界)", re.I),
+    ),
+    (
+        "jailbreak",
+        re.compile(r"(做|执行|干)(任何|任意)(事情|操作|事)", re.I),
+    ),
+    (
+        "medical_boundary",
+        re.compile(r"(如何|怎么)(制造|合成|制作|配制)(药物|药品|毒药|毒品)", re.I),
+    ),
+    (
+        "medical_boundary",
+        re.compile(r"(忽略|无视)(医学|临床|安全|伦理)(准则|规范|规则|指南)", re.I),
+    ),
+    (
+        "medical_boundary",
+        re.compile(r"(给我|帮我)(开|写)(处方|药方)", re.I),
+    ),
+    (
+        "prompt_leak",
+        re.compile(r"(你的|您的)(系统)?(提示词|提示|指令|规则|要求|prompt)(是什么|有哪些|给我看|显示)", re.I),
+    ),
+    (
+        "prompt_leak",
+        re.compile(r"(输出|显示|泄露)(你的|您的)?(系统)?(提示词|提示|指令|规则|初始提示)", re.I),
+    ),
 ]
 
 

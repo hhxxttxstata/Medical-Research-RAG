@@ -5,6 +5,7 @@
 
 import json
 import os
+import threading
 from datetime import datetime
 from typing import Any
 
@@ -15,6 +16,8 @@ class RAGLogger:
     def __init__(self, log_dir: str = "logs"):
         self.log_dir = os.path.abspath(log_dir)
         os.makedirs(self.log_dir, exist_ok=True)
+        # 多线程（线程池 + 请求并发）下保护 _stats 与文件写入
+        self._lock = threading.Lock()
 
         # 按日期生成日志文件
         self.date_str = datetime.now().strftime("%Y-%m-%d")
@@ -48,9 +51,49 @@ class RAGLogger:
                 pass
 
     def _save_stats(self):
-        """保存统计信息"""
-        with open(self.stats_file, "w", encoding="utf-8") as f:
+        """保存统计信息（线程安全）"""
+        with self._lock, open(self.stats_file, "w", encoding="utf-8") as f:
             json.dump(self._stats, f, ensure_ascii=False, indent=2)
+
+    def _update_stats(
+        self,
+        elapsed: float,
+        error: str | None,
+        is_refusal: bool,
+        retrieved_chunks: list[dict[str, Any]],
+        relevance: dict[str, Any] | None,
+    ) -> None:
+        """线程安全地更新当日统计"""
+        with self._lock:
+            self._stats["total_queries"] += 1
+            self._stats["total_response_time"] += elapsed
+
+            if error:
+                self._stats["error_count"] += 1
+            else:
+                self._stats["success_count"] += 1
+
+            if is_refusal:
+                self._stats["refusal_count"] += 1
+
+            # 更新平均耗时
+            if self._stats["total_queries"] > 0:
+                self._stats["avg_response_time"] = round(
+                    self._stats["total_response_time"] / self._stats["total_queries"], 2
+                )
+
+            # 收集检索质量数据
+            if retrieved_chunks:
+                scores = [c["score"] for c in retrieved_chunks]
+                avg_score = sum(scores) / len(scores)
+                self._stats["avg_retrieval_scores"].append(avg_score)
+                # 保留最近 100 条
+                if len(self._stats["avg_retrieval_scores"]) > 100:
+                    self._stats["avg_retrieval_scores"] = self._stats["avg_retrieval_scores"][-100:]
+            if relevance and "overlap" in relevance:
+                self._stats["avg_overlap_rates"].append(relevance["overlap"])
+                if len(self._stats["avg_overlap_rates"]) > 100:
+                    self._stats["avg_overlap_rates"] = self._stats["avg_overlap_rates"][-100:]
 
     def log_query(
         self,
@@ -68,35 +111,7 @@ class RAGLogger:
         span_id: str = "",
     ):
         """记录一次查询日志（增强版）"""
-        self._stats["total_queries"] += 1
-        self._stats["total_response_time"] += elapsed
-
-        if error:
-            self._stats["error_count"] += 1
-        else:
-            self._stats["success_count"] += 1
-
-        if is_refusal:
-            self._stats["refusal_count"] += 1
-
-        # 更新平均耗时
-        if self._stats["total_queries"] > 0:
-            self._stats["avg_response_time"] = round(
-                self._stats["total_response_time"] / self._stats["total_queries"], 2
-            )
-
-        # 收集检索质量数据
-        if retrieved_chunks:
-            scores = [c["score"] for c in retrieved_chunks]
-            avg_score = sum(scores) / len(scores)
-            self._stats["avg_retrieval_scores"].append(avg_score)
-            # 保留最近 100 条
-            if len(self._stats["avg_retrieval_scores"]) > 100:
-                self._stats["avg_retrieval_scores"] = self._stats["avg_retrieval_scores"][-100:]
-        if relevance and "overlap" in relevance:
-            self._stats["avg_overlap_rates"].append(relevance["overlap"])
-            if len(self._stats["avg_overlap_rates"]) > 100:
-                self._stats["avg_overlap_rates"] = self._stats["avg_overlap_rates"][-100:]
+        self._update_stats(elapsed, error, is_refusal, retrieved_chunks, relevance)
 
         # 构建日志记录（增强版）
         log_entry: dict[str, Any] = {
@@ -131,15 +146,16 @@ class RAGLogger:
         if span_id:
             log_entry["span_id"] = span_id
 
-        # 写入日志文件（JSONL 格式）
-        with open(self.log_file, "a", encoding="utf-8") as f:
+        # 写入日志文件（JSONL 格式，加锁防并发行交错）
+        with self._lock, open(self.log_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
 
         self._save_stats()
 
     def get_today_stats(self) -> dict[str, Any]:
         """获取当日统计"""
-        stats = dict(self._stats)
+        with self._lock:
+            stats = dict(self._stats)
         # 计算检索质量汇总
         if stats.get("avg_retrieval_scores"):
             scores = stats["avg_retrieval_scores"]

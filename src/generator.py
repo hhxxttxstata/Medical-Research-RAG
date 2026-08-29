@@ -699,6 +699,9 @@ class LLMGenerator:
             if text.startswith("json"):
                 text = text[4:].strip()
             data = json.loads(text)
+            # 校验顶层类型：LLM 可能输出数组/标量，需在字段访问前拦截
+            if not isinstance(data, dict):
+                return {}, False
         except json.JSONDecodeError:
             return {}, False
 
