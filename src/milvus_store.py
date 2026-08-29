@@ -15,16 +15,10 @@ Milvus 向量数据库封装
       - metadata (JSON)
   - 索引: IVF_FLAT (nlist=128) 或 HNSW (M=16, efConstruction=200)
   - 度量: IP（内积，与 L2 归一化的 cosine 等价）
-
-面试亮点：
-  - 从 ChromaDB（嵌入式）到 Milvus（分布式）的架构演进思路
-  - 索引类型选择：IVF_FLAT 适合 10 万级中等规模，HNSW 适合更高精度要求
-  - Collection 管理 + 标量过滤 + 一致性级别
 """
 
 import json
 import os
-import sys
 import time
 from typing import Any
 
@@ -64,6 +58,7 @@ class MilvusStore:
 
         self._connected = False
         self._collection = None
+        self._loaded_once = False  # 连接期间只 load_collection 一次（小库 load 也要 ~1s）
 
     # ── 连接管理 ────────────────────────────────────
 
@@ -148,13 +143,20 @@ class MilvusStore:
             self._collection = None
 
     def _ensure_loaded(self):
-        """确保集合处于 loaded 状态（Milvus 释放后需重新加载才能检索）"""
+        """确保集合处于 loaded 状态（Milvus 释放后需重新加载才能检索）
+
+        性能：load_collection 在小库上也要 0.4-1s，且每请求重复调用是纯浪费。
+        用 _loaded_once 标记：连接期间只真正加载一次；检索失败时重置标记重试。
+        """
         if not self._connected or self._collection is None:
+            return
+        if getattr(self, "_loaded_once", False):
             return
         try:
             self._client.load_collection(self.collection_name)
+            self._loaded_once = True
         except Exception:
-            pass
+            self._loaded_once = False
 
     # ── 数据写入 ────────────────────────────────────
 
@@ -190,11 +192,13 @@ class MilvusStore:
                 print(f"  ⚠️ Milvus 批量插入失败 (batch {i}): {e}")
 
         if inserted > 0:
-            if sys.platform != "win32":
-                try:
-                    self._client.flush(self.collection_name)
-                except Exception:
-                    pass
+            # flush 确保数据持久化（进程异常退出时内存数据会丢失——2026-08-16
+            # 评测实测：Windows 上此前跳过 flush，阶段 2 崩溃导致已插入的 874 条
+            # 全部丢失）。Milvus Lite / Standalone 均支持。
+            try:
+                self._client.flush(self.collection_name)
+            except Exception as e:
+                print(f"  ⚠️ Milvus flush 失败（数据可能未持久化）: {e}")
             print(f"  ✅ 插入 {inserted} 条向量到 Milvus 集合 '{self.collection_name}'")
 
     # ── 向量检索 ────────────────────────────────────

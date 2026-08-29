@@ -7,10 +7,6 @@ watcher.py — 增量文件监听器
   - 去抖机制：文件稳定 2s 后才处理，避免写入中触发
   - 已处理文件追踪：Redis SET → 内存 set → JSON 持久化三重保障
   - 每文件独立处理，失败不影响其他文件
-
-面试价值：
-  展示对 RAG 系统运维的工程化思考——增量索引是生产环境的标配功能。
-  watchdog + debounce + processed 追踪的模式可复用到任何文件监听场景。
 """
 
 import logging
@@ -78,8 +74,13 @@ class ProcessedFilesTracker:
             self._save()
 
 
-class DocumentHandler:
-    """watchdog 事件处理器"""
+class DocumentHandler(watchdog.events.FileSystemEventHandler):
+    """watchdog 事件处理器
+
+    必须继承 FileSystemEventHandler：watchdog 的 Observer 通过 dispatch()
+    路由事件到 on_created/on_modified 等（不继承会抛
+    AttributeError: 'DocumentHandler' object has no attribute 'dispatch'）。
+    """
 
     def __init__(self, pipeline, processed_tracker: ProcessedFilesTracker):
         self._pipeline = pipeline
@@ -87,7 +88,7 @@ class DocumentHandler:
 
     def on_created(self, event) -> None:
         if isinstance(event, (watchdog.events.FileCreatedEvent, watchdog.events.FileModifiedEvent)):
-            path = event.src_path
+            path: str = str(event.src_path)
             if event.is_directory:
                 return
             suffix = Path(path).suffix.lower()

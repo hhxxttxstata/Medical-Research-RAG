@@ -1,8 +1,12 @@
 # Final Step — Step 15 + Step 16（最终交付前收尾）
 
 > 完成日期：2026-08-13
-> 前序：Step 13.5 holdout 验收 + Step 14 cost-aware v2.1（`docs/step135_holdout_step14_cost.md`）
+> 前序：Step 13.5 holdout 验收 + Step 14 cost-aware v2.1（`docs/archive/step135_holdout_step14_cost.md`）
 > 本阶段后**彻底停止实验**（final_step.md STOP 条件）
+>
+> 注（2026-08-16）：本报告为冻结实验记录。文中引用的 `scripts/step*.py` 实验脚本
+> 已归档至 `scripts/archive/`（历史证据链，不保证当前环境可运行）；当前可运行入口为
+> `scripts/step16_runtime_parity.py`（parity 复现）与 `evaluate.py`（检索评测）。
 
 ---
 
@@ -29,7 +33,7 @@ RAG lifecycle 的最后一段——最终生成答案中的 factual claims 是�
 
 设计原则：
 - 不把 retrieval hit 当成最终质量——评测最终生成答案的 grounded 质量
-- 逐 claim 判定，**显式记录每条 unsupported claim**（Failure Anatomy 素材，面试可讲）
+- 逐 claim 判定，**显式记录每条 unsupported claim**（Failure Anatomy 素材）
 - LLM-Judge 不可用时降级规则判定（claim 级 char-overlap 交叉验证，复用 eval/judge.py 思想）
 
 ### 实现
@@ -56,7 +60,7 @@ RAG lifecycle 的最后一段——最终生成答案中的 factual claims 是�
 | Citation Valid Rate | 17/18 | 引用编号全部有效 |
 | False Abstain | 1/16 | bh_multi_02 误拒（LLM 波动，如实记录） |
 
-**唯一 unsupported claim（面试可讲）**：
+**唯一 unsupported claim**：
 `bh_partial_02`: "同时注意在转换为HU值后根据目标组织设置合适的窗宽窗位（如肺栓塞检测中窗位100 Hu、窗宽900 Hu）"
 ——该窗宽窗位数值不在最终证据中（检索到了转换流程但未覆盖窗宽窗位细节），被 judge 显式标记 unsupported。
 这正是 Step 15 的价值：**检索命中 ≠ 答案正确，答案正确 ≠ 每句 grounded**。
@@ -69,7 +73,7 @@ RAG lifecycle 的最后一段——最终生成答案中的 factual claims 是�
 
 ### 研究问题
 
-"没有通用框架，面试会不会不好讲？"——把 Agentic RAG v2 的 while-loop orchestration
+设计动机：把 Agentic RAG v2 的 while-loop orchestration
 套成标准 LangGraph StateGraph runtime，**零策略逻辑改动**，验证 behavioral parity。
 
 设计原则（final_step.md Step 16）：
@@ -118,12 +122,6 @@ START → retrieve → evaluate → policy → [conditional edge]
 **结论：Behavioral Parity 成立**——核心 policy / evidence-state 架构 framework-agnostic。
 18/18 route + ER + 终局动作全同；answer 文本差异仅来自 LLM 生成温度。
 
-**面试话术**：
-"核心 Agentic RAG policy 和 evidence-state architecture 是我自己设计实现的，最初保持
-framework-agnostic 以便严格做 evaluation 和 ablation；系统稳定后又适配了 LangGraph 作为
-标准 orchestration runtime，并通过同一套 regression benchmark 验证行为一致
-（18/18 route + ER + 终局动作全同，串行独占环境下零差异）。"
-
 ---
 
 ## 三、STOP
@@ -136,4 +134,4 @@ Step 16（LangGraph Runtime Parity）✓
 不再做：Multi-Agent / Planner-Critic-Supervisor / 更多 retrieval tools / threshold tuning /
 换 embedding / 换 reranker / 重启 Rewrite / 增加 ReAct / 为 benchmark 再修 ho_hard_01。
 
-剩余交付物（非实验）：README/架构图更新、4 个 Demo Case、面试讲稿。
+剩余交付物（非实验）：README/架构图更新、4 个 Demo Case。

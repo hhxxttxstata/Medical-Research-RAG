@@ -8,7 +8,6 @@
   - 热力图：配置参数与指标的相关性
 
 图表保存到 eval_results/figures/ 目录
-可直接用于秋招项目展示
 """
 
 import os

@@ -7,8 +7,6 @@
   - 推荐优化方向
   - 预期提升幅度
   - 优先级排序
-
-直接可用于秋招项目展示中的"持续优化"章节。
 """
 
 import json
@@ -202,13 +200,13 @@ def generate_report(
     for rec in sorted(recommendations, key=lambda r: r["priority"]):
         lines.append(f"  {rec['priority']:<12} {rec['component']:<20} {rec.get('suggestion', '')[:60]}...")
 
-    # ── 面试亮点 ──
-    lines.append("\n## 四、面试中可以讲的技术亮点")
+    # ── 优化总结 ──
+    lines.append("\n## 四、优化总结")
     lines.append("\n  1. 构建了完整的 RAG 评估体系（检索指标 + 生成质量 + 拒答能力）")
     lines.append("  2. 通过消融实验验证各组件贡献，数据驱动的优化决策")
     lines.append(f"  3. 发现当前 {semantic:.4f} 语义相似度瓶颈，定位到 embedding 模型")
     lines.append("  4. 按难度分层评估（easy/medium/hard），精细化衡量系统边界")
-    lines.append("  5. 可视化对比多配置，面试时一目了然展示优化历程")
+    lines.append("  5. 可视化对比多配置，直观展示优化历程")
 
     lines.append("\n" + "=" * 60)
     lines.append("  报告结束")

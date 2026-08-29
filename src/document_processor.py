@@ -18,10 +18,6 @@
     └─ 4. SmartChunker ──────── Section-aware Small-to-Big 切分
          ├─ small chunks (200-500字) → 用于向量检索
          └─ parent chunks (800-2000字) → 用于 LLM 上下文注入
-
-面试价值：
-  - PyMuPDF + 手写清洗规则管线：可控、可解释、可调试（无需 GPU）
-  - Small-to-Big + Quality Gate 生产级 RAG 标配架构
 """
 
 import os
@@ -566,11 +562,6 @@ class CleanupPipeline:
       5. detect_low_value   — 低价值段落标记（纯数字/URL/超短段）
       6. quality_gate       — 汇总评分，低于阈值打降级标记
                              + trace_log：每条规则的执行记录
-
-    面试价值：
-      - 手写规则管线 vs 黑盒模型：可控、可解释、可调试
-      - Quality gate 是生产级 RAG 的标配（防垃圾进→垃圾出）
-      - 每条规则可单独开关，方便 ablation study
     """
 
     RULES = [
