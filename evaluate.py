@@ -122,7 +122,7 @@ metrics = compute_all_metrics(records)
 print_metrics_report(metrics)
 print(f"  ⏱  总耗时: {elapsed:.1f}s  ({(elapsed / len(questions)):.1f}s/题)\n")
 
-# ── 2. Bad Case 诊断（可选：脚本已归档至 scripts/archive/） ──
+# ── 2. Bad Case 诊断（可选：诊断脚本已随归档清理移出仓库） ──
 print("=" * 70)
 print("  🔍 阶段 2：Bad Case 诊断")
 print("=" * 70)
@@ -133,7 +133,7 @@ try:
     bad_cases = find_bad_cases(records)
     print_bad_case_report(bad_cases)
 except (ImportError, ModuleNotFoundError):
-    print("  ⚠️ scripts/bad_case_review.py 已归档（scripts/archive/），跳过 bad case 诊断")
+    print("  ⚠️ bad_case 诊断脚本已移出仓库（全文见 git 历史中的 scripts/archive/），跳过 bad case 诊断")
 
 pipeline.close()
 

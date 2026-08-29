@@ -1,11 +1,11 @@
 # Final Step — Step 15 + Step 16（最终交付前收尾）
 
 > 完成日期：2026-08-13
-> 前序：Step 13.5 holdout 验收 + Step 14 cost-aware v2.1（`docs/archive/step135_holdout_step14_cost.md`）
+> 前序：Step 13.5 holdout 验收 + Step 14 cost-aware v2.1（原 `docs/archive/step135_holdout_step14_cost.md`，已随归档清理移出，全文见 git 历史）
 > 本阶段后**彻底停止实验**（final_step.md STOP 条件）
 >
 > 注（2026-08-16）：本报告为冻结实验记录。文中引用的 `scripts/step*.py` 实验脚本
-> 已归档至 `scripts/archive/`（历史证据链，不保证当前环境可运行）；当前可运行入口为
+> 已移出仓库（全文见 git 历史中的 scripts/archive/，不保证当前环境可运行）；当前可运行入口为
 > `scripts/step16_runtime_parity.py`（parity 复现）与 `evaluate.py`（检索评测）。
 
 ---
