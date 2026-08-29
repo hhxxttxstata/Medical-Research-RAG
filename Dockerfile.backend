@@ -24,8 +24,13 @@ RUN sed -i 's|deb.debian.org|mirrors.ustc.edu.cn|g' /etc/apt/sources.list.d/debi
 RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
 # ── Python 依赖（与 CI 测试共用 requirements.txt 唯一清单）───────
+# 无 GPU 服务器：torch 必须先通过 PyTorch 官方 CPU index 安装。
+# 若直接 pip install -r，Linux 上会默认拉取 CUDA 版 torch
+# （~527MB wheel + ~1.7GB nvidia-cudnn/cublas/nccl 等运行时，全部用不到）。
+# torch 装好后 requirements.txt 中的 torch>=2.0.0 已满足，pip 不会重复安装。
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt
 
 # ── 源码 ──────────────────────────────────────
