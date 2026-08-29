@@ -11,11 +11,6 @@ Lucene 兼容的磁盘 BM25 索引（基于 Whoosh 实现）
   - _X_*.idx        — 倒排列表
   - _X.doc          — 文档存储
   - _X.tr           — 词项向量
-
-面试亮点：
-  - 展示了对 Lucene 架构的理解（Index → Segment → Document → Field）
-  - 解释了 Whoosh 的 BM25F 评分公式与 elasticsearch 的 similarity 配置的对应关系
-  - 回答了「为什么不用 Elasticsearch?」——面试演示项目追求轻量 + 展示原理理解
 """
 
 import json

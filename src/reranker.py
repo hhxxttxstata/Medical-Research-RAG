@@ -8,11 +8,6 @@ reranker.py — Cross-encoder 重排序器
   - 类级缓存模型，避免重复加载
   - batch 推理，默认 batch_size=64
   - 懒加载，首次 rerank 时才下载模型
-
-面试价值：
-  展示对 LLM-as-reranker 成本问题的认知和工程化解方案。
-  Cross-encoder 比 bi-encoder 更准确（query-doc 交互计算），
-  比 LLM 便宜三个数量级。
 """
 
 import logging

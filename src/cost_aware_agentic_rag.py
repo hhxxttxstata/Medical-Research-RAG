@@ -29,6 +29,17 @@ v2.1 相对 v2 的改动:
     （bh_ood_02 模式）→ grader 必须被调用
   - clearly supported：top1 ≥ 0.5 且（无 plan 或 completeness == 1.0）
   - clearly missing：top1 < 0.05 且无 plan
+
+B1/B2/B3 修正（本轮）：
+  - B1 结构信号两级化：多问号 → 直接 DECOMPOSE（可靠）；对比/并列
+    （_is_comparison）→ UNCERTAIN（grader 裁决 needs_decomposition /
+    sufficient），避免误拆单跳对比题（"窗宽和窗位的区别"）
+  - B2 结构预检前置：可靠多问号跳过全问题初始检索（hop 定向检索覆盖
+    全部证据），省一次检索 + 延迟（route 以 DECOMPOSE 开头）
+  - B3 OOD 早拒：top1 < 0.05 且命中领域外关键词 → 直接 ABSTAIN，
+    不浪费一轮 RETRIEVE
+  - B8 LLM policy 失败返回空 action（""）→ truthy 判断，LangGraph
+    status 映射不再 KeyError（原 `is not None` 把空串当合法动作）
 """
 
 import json
@@ -54,6 +65,13 @@ from .retriever import Retriever
 SUPPORTED_TOP1 = 0.5  # reranker top1 ≥ 0.5 → SUPPORTED
 CLEARLY_IRRELEVANT = 0.05  # top1 < 0.05 → clearly missing（无 plan 时）
 
+# RERANK_CAP：单次重排候选上限（生产优化，2026-08-17）
+# CPU 上 bge-reranker-v2-m3 对 300-500 字真实 chunk 约 5s/对；全量 bank 重排
+# 会让多 hop 题的单次证据分配超过 5 分钟。重排分数按 (query, chunk) 对独立
+# 计算，截断只改变候选集合，不改变已算对的分数值；hop top-3 / 最终 top-k
+# 几乎必然落在 RRF 前 16 内（标准 rerank top-N 实践）。
+RERANK_CAP = 16
+
 # 语言模型调用类型（供 observability 分类）
 CALL_GRADER = "grader"
 CALL_DECOMPOSE = "decompose"
@@ -65,9 +83,8 @@ CALL_GENERATION = "generation"
 class CostObservation:
     """Step 14 Observability：单次 run 的成本/路由观测记录
 
-    面试话术对应："Policy 会显式记录 fallback source 和 error type；
-    单独监控 grader fallback rate、model timeout rate 和 route distribution，
-    防止能力静默退化。"
+    记录 policy_source、grader 调用原因与 fallback 来源，
+    用于监控 grader fallback rate、model timeout rate 和 route distribution。
     """
 
     policy_source: str = ""  # cheap_signal / llm / rule_fallback
@@ -128,7 +145,7 @@ class CostAwareAgenticRAG:
         reranker = self.reranker
         if reranker is not None and getattr(reranker, "model_ready", False):
             try:
-                ranked = reranker.rerank(query, list(chunks[:20]), 3)
+                ranked = reranker.rerank(query, list(chunks[:RERANK_CAP]), 3)
                 if ranked:
                     return float(ranked[0].get("_rerank_score", ranked[0].get("score", 0.0)))
             except Exception:
@@ -198,8 +215,17 @@ class CostAwareAgenticRAG:
         from .agentic_rag import AgenticRAG
 
         is_multi_part = AgenticRAG._is_multi_part
+        is_comparison = AgenticRAG._is_comparison
         if is_multi_part(question) and not state.hops and not state.decompose_attempted:
             return "DECOMPOSE", "问题含多个独立子问题，先生成 hop plan"
+
+        # ── 0a. 对比/并列结构信号（B1，零成本）：交 LLM grader 裁决 ──
+        # （"X和Y的区别"可能单跳可答——"窗宽和窗位的区别"；也可能真多跳——
+        #   "U-Net和TransUNet的区别"。规则不能直判 DECOMPOSE（会误拆 easy
+        #   题），也不能 cheap ACCEPT（会丢 hop）；UNCERTAIN → grader 看证据后
+        #   判 needs_decomposition（→DECOMPOSE）或 sufficient（→ACCEPT）。）
+        if is_comparison(question) and not state.hops and not state.decompose_attempted:
+            return "UNCERTAIN", "对比/并列结构问题，需 grader 裁决是否拆解"
 
         # ── 0b. 时间敏感冲突（bh_ood_02 模式，零成本信号）：问题含年份 → UNCERTAIN ──
         # （v2 实证：reranker top1=0.946 + 词面有"肺栓塞/指南"重叠仍可能 OOD——
@@ -227,6 +253,11 @@ class CostAwareAgenticRAG:
 
         # ── clearly missing：无相关证据 ──
         if top1 < CLEARLY_IRRELEVANT and not state.hops:
+            # B3：OOD 关键词命中（规则判定可靠）→ 直接拒答，不浪费一轮再检索
+            # （原实现先 RETRIEVE 一轮、迭代耗尽才 ABSTAIN，每 OOD 题多付
+            #   一次检索 + 延迟；OOD 是关键词判定，无需证据再确认）
+            if ood_rule:
+                return "ABSTAIN", f"top1={top1:.3f} 无相关证据且命中领域外关键词，直接拒答"
             if state.retrieval_budget > 0 and state.iteration < self.max_iterations:
                 return "RETRIEVE", f"top1={top1:.3f} 无相关证据，targeted 再试一次"
             return "ABSTAIN", f"top1={top1:.3f} 证据与问题无关且预算耗尽"
@@ -413,20 +444,31 @@ class CostAwareAgenticRAG:
         state = AgentState(original_query=question)
         state.retrieval_budget = self.max_iterations + 2
         t0 = time.time()
-        obs.retrieval_calls += 1
 
-        # ── Iteration 0：初始检索 ──
-        state.route.append("RETRIEVE")
-        initial = self.retriever._hybrid_retrieve(question, fetch_k=fetch_k)
-        state.retrieval_history.append(
-            {"query": question, "sources": initial, "iteration": state.iteration, "reason": "initial"}
-        )
-        self._accumulate(state, initial)
-        state.iteration += 1
-        state.retrieval_budget -= 1
+        # ── Iteration 0：结构预检（B2，零成本，先于初始检索）──
+        # 可靠多问号（多问号结构是问题内在属性，无需证据即可判定）→ 直接进
+        # DECOMPOSE 分支：hop 定向检索会覆盖全部所需证据，全问题初始检索
+        # 对多问号题几乎无用（还往 evidence_bank 灌无关 chunk，干扰 hop 证据
+        # 分配），省一次检索 + 延迟。非多问号 → 照旧初始检索。
+        from .agentic_rag import AgenticRAG
 
-        grade: dict = {"decision": "insufficient", "reason": "initial", "evidence_score": 0.0}
-        decision, action_mode = self._decide_once(question, state, grade, obs, fetch_k, verbose)
+        if AgenticRAG._is_multi_part(question) and not state.decompose_attempted:
+            # 预检命中：直接进 DECOMPOSE（循环顶会 append 决策并执行拆解分支）
+            grade: dict = {"decision": "insufficient", "reason": "初始结构预检", "evidence_score": 0.0}
+            grade["reason"] = "问题含多个独立子问题，先生成 hop plan"
+            decision, action_mode = "DECOMPOSE", "cheap_signal"
+        else:
+            obs.retrieval_calls += 1
+            state.route.append("RETRIEVE")
+            initial = self.retriever._hybrid_retrieve(question, fetch_k=fetch_k)
+            state.retrieval_history.append(
+                {"query": question, "sources": initial, "iteration": state.iteration, "reason": "initial"}
+            )
+            self._accumulate(state, initial)
+            state.iteration += 1
+            state.retrieval_budget -= 1
+            grade = {"decision": "insufficient", "reason": "initial", "evidence_score": 0.0}
+            decision, action_mode = self._decide_once(question, state, grade, obs, fetch_k, verbose)
         obs.policy_source = action_mode or "cheap_signal"
 
         while decision in ("RETRIEVE", "DECOMPOSE") and state.retrieval_budget > 0:
@@ -559,9 +601,20 @@ class CostAwareAgenticRAG:
     # ══════════════════════════════════════════════════
 
     def _decide_once(
-        self, question: str, state: AgentState, grade: dict, obs: CostObservation, fetch_k: int, verbose: bool
+        self,
+        question: str,
+        state: AgentState,
+        grade: dict,
+        obs: CostObservation,
+        fetch_k: int,
+        verbose: bool,
     ) -> tuple[str, str]:
         """单轮决策：Cheap Signal Gate → (UNCERTAIN 时) LLM Grader → LLM Policy
+
+        约定：grade 为调用方持有的 dict 引用，本方法所有更新（reason /
+        target_hop / evidence_score / decision）都写入该引用 —— 这样
+        LangGraph runtime 的 policy 节点能直接读到 cost-aware 决策的
+        完整原因（reason / target_hop 用于路由）。
 
         Returns:
             (decision, action_mode)  action_mode ∈ {cheap_signal, llm, rule_fallback}
@@ -569,6 +622,10 @@ class CostAwareAgenticRAG:
         from .agentic_rag import AgenticRAG
 
         is_multi_part = AgenticRAG._is_multi_part
+        is_comparison = AgenticRAG._is_comparison
+        # B1：LLM 路径（grader 已看过证据）中对比/并列与多问号同等对待——
+        # 保持 v2.1 冻结行为：unsupported 豁免 / DECOMPOSE 出口不变
+        multi_part_signal = is_multi_part(question) or is_comparison(question)
 
         # ── 1. Cheap Signal Gate ──
         verdict, reason = self._signal_verdict(state, question)
@@ -584,7 +641,9 @@ class CostAwareAgenticRAG:
         # ── 2. UNCERTAIN → LLM Grader（或 fallback）──
         obs.grader_called = True
         obs.grader_reason = self._classify_uncertainty(reason)
-        grade = self.evidence_grade(question, state.candidates)
+        fresh = self.evidence_grade(question, state.candidates)
+        grade.clear()
+        grade.update(fresh)  # 原地更新（保持调用方引用，LangGraph 可读）
         state.evidence_score = grade["evidence_score"]
         if grade.get("fallback_used"):
             obs.fallback_used = True
@@ -603,7 +662,7 @@ class CostAwareAgenticRAG:
             g_decision == "insufficient"
             and any(k in g_reason for k in ("未提及", "未找到", "不存在", "没有提及", "无相关"))
         )
-        if unsupported and not (is_multi_part(question) and not state.hops):
+        if unsupported and not (multi_part_signal and not state.hops):
             if state.retrieval_budget > 0 and state.iteration < self.max_iterations:
                 grade["reason"] = "证据不支撑答案（grader），targeted 再试一次"
                 return "RETRIEVE", "llm"
@@ -611,14 +670,17 @@ class CostAwareAgenticRAG:
             return "ABSTAIN", "llm"
 
         # multi-part 未拆过 → 拆解
-        if is_multi_part(question) and not state.hops and not state.decompose_attempted:
+        if multi_part_signal and not state.hops and not state.decompose_attempted:
             grade["reason"] = "问题含多个独立子问题，生成结构化 plan"
             return "DECOMPOSE", "llm"
 
         # ── 3. 仍不确定 → LLM Policy ──
         if self._use_llm_policy:
             action, reason_llm, fb = self.policy_llm(question, state, grade)
-            if action is not None:
+            if action:
+                # B8：policy_llm 失败返回 ("", ...)（空 action 不是合法动作）——
+                # `is not None` 会把空串当合法动作返回，LangGraph 的 status
+                # 映射表将 KeyError；改为 truthy 判断，失败走规则兜底
                 grade["reason"] = reason_llm
                 return action, "llm"
             obs.fallback_used = True
@@ -646,6 +708,21 @@ class CostAwareAgenticRAG:
     # ══════════════════════════════════════════════════
 
     def _accumulate(self, state: AgentState, new_chunks: list[dict]) -> None:
+        """证据累积（去重）+ 相关性分数刷新
+
+        2026-08-17 修复（bh_multi_01 实测）：已有 chunk 的 score/_rrf_score 必须用
+        最新一轮检索的分数更新——否则 hop 定向检索把某 chunk 从"低相关"捞到
+        "高相关"时，旧分（来自初始全问题检索）会让 RERANK_CAP 的分数截断
+        错误地把它排除在 hop 证据分配之外。
+        """
+        score_by_id = {c["id"]: c for c in new_chunks}
+        for c in state.evidence_bank:
+            fresh = score_by_id.get(c["id"])
+            if fresh is not None:
+                if "_rrf_score" in fresh:
+                    c["_rrf_score"] = fresh["_rrf_score"]
+                if "score" in fresh:
+                    c["score"] = fresh["score"]
         seen = {c["id"] for c in state.evidence_bank}
         for c in new_chunks:
             if c["id"] not in seen:
@@ -668,7 +745,19 @@ class CostAwareAgenticRAG:
         if reranker is not None and getattr(reranker, "model_ready", False):
             try:
                 for hop in state.hops:
-                    ranked = reranker.rerank(hop.subquery, list(state.evidence_bank), 3)
+                    # RERANK_CAP：只对证据池的 RRF 高分前 16 重排（标准实践）。
+                    # ⚠️ 2026-08-17 修复：evidence_bank 是跨轮累积的 append 序
+                    # （initial → hop1 → hop2），直接 [:16] 会把 hop 定向检索
+                    # 新捞到的证据（排在 bank 末尾）截掉 → 误判 MISSING。
+                    # 必须按 RRF 分数降序截断——RRF score = Σ1/(k+rank)，跨
+                    # query 同尺度可比，各轮检索的 top chunks 都会被保留。
+                    # 分数按对计算，截断只影响候选集，不影响已算对的分数值。
+                    bank_top = sorted(
+                        state.evidence_bank,
+                        key=lambda c: c.get("_rrf_score", c.get("score", 0.0)),
+                        reverse=True,
+                    )[:RERANK_CAP]
+                    ranked = reranker.rerank(hop.subquery, bank_top, 3)
                     state.evidence_by_hop[hop.hop_id] = ranked
                     hop.evidence_ids = [c["id"] for c in ranked]
                     hop.evidence_score = ranked[0].get("_rerank_score", 0.0) if ranked else 0.0
@@ -728,7 +817,15 @@ class CostAwareAgenticRAG:
         reranker = self.reranker
         if reranker is not None and getattr(reranker, "model_ready", False):
             try:
-                return reranker.rerank(question, list(candidates), k)
+                # RERANK_CAP：最终证据重排按 RRF 分数降序取前 16（同
+                # _assign_to_hops 修复——candidates 也是跨轮累积 append 序，
+                # 直接 [:16] 会丢掉 hop 定向检索新捞的证据）
+                top = sorted(
+                    candidates,
+                    key=lambda c: c.get("_rrf_score", c.get("score", 0.0)),
+                    reverse=True,
+                )[:RERANK_CAP]
+                return reranker.rerank(question, top, k)
             except Exception:
                 pass
         return candidates[:k]
@@ -769,3 +866,34 @@ class CostAwareAgenticRAG:
             ]
         )
         return "\n".join(parts)
+
+    # ══════════════════════════════════════════════════
+    #  v2 兼容接口（LangGraph runtime 节点统一调用，转发到 v2.1 实现）
+    # ══════════════════════════════════════════════════
+
+    def hybrid_search(self, query: str, fetch_k: int = 20, note: str = "") -> list[dict]:
+        """混合检索（v2 同名契约）"""
+        return self.retriever._hybrid_retrieve(query, fetch_k=fetch_k)
+
+    def _accumulate_evidence(self, state: AgentState, new_chunks: list[dict]) -> None:
+        """证据累积（v2 同名契约）"""
+        self._accumulate(state, new_chunks)
+
+    def _init_hops_from_plan(self, state: AgentState, plan: list[dict]) -> None:
+        """按 plan 初始化 hop 状态（v2 同名契约）"""
+        state.plan = plan
+        state.hops = [
+            HopState(hop_id=p["hop_id"], subquery=p["question"], required=True, depends_on=p.get("depends_on"))
+            for p in plan
+        ]
+        state.evidence_by_hop = {h.hop_id: [] for h in state.hops}
+
+    def _compute_completeness(self, state: AgentState) -> tuple[float, list[HopState]]:
+        """hop 完成度 + 缺失列表（v2 同名契约，复用 cost-aware 实现）"""
+        comp = self._completeness(state)
+        return comp, self._missing_hops(state)
+
+    def generate(self, question: str, chunks: list[dict]) -> str:
+        """生成回答（v2 同名契约）"""
+        answer, _op_err = self._generate(question, chunks)
+        return answer

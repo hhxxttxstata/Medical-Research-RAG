@@ -4,11 +4,7 @@ src/auth.py — API Key 认证
 设计决策：
   - 单一 Bearer token，从环境变量 API_KEY 读取
   - 装饰器式 Depends()，精确控制哪些接口需要认证
-  - 不引入用户/角色体系，秋招阶段展示"最小可行认证"理念
-
-面试讲解点：
-  用 FastAPI Depends() 实现依赖注入式认证，比 FastAPI middleware 更精确
-  每个端点的认证需求由端点自身声明，而非全局拦截器
+  - 不引入用户/角色体系，保持最小可行认证
 """
 
 import os
