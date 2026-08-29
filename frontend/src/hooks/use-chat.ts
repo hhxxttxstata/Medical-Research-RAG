@@ -20,13 +20,6 @@ export interface Message {
   expanded?: boolean
 }
 
-export interface DiagnoseResult {
-  probability: number
-  prediction: number
-  riskLevel: string
-  filename: string
-}
-
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -74,6 +67,17 @@ export function useChat() {
                 prev.map((m) =>
                   m.id === assistantMsgId ? { ...m, content: data, isStreaming: false } : m,
                 ),
+              )
+            } else if (event === "sources") {
+              // 检索来源文档（原实现丢弃该事件 → 前端看不到引用来源）
+              const srcs: Source[] = (Array.isArray(data) ? data : []).map((s: Record<string, unknown>) => ({
+                id: String(s.id ?? ""),
+                filename: String((s.metadata as Record<string, unknown> | undefined)?.filename ?? ""),
+                score: Number(s.score ?? 0),
+                text: String(s.text ?? ""),
+              }))
+              setMessages((prev) =>
+                prev.map((m) => (m.id === assistantMsgId ? { ...m, sources: srcs } : m)),
               )
             } else if (event === "verbose_answer") {
               verboseAnswer = data
@@ -148,36 +152,6 @@ export function useChat() {
     )
   }, [])
 
-  const diagnose = useCallback(async (file: File) => {
-    setIsLoading(true)
-    const id = `msg-${++conversationIdRef.current}`
-    setMessages((prev) => [
-      ...prev,
-      { id, role: "assistant", content: "", timestamp: Date.now(), isStreaming: true },
-    ])
-    try {
-      const res = await api.diagnose(file)
-      const riskEmoji = res.risk_level === "高风险" ? "🔴" : res.risk_level === "中风险" ? "🟡" : res.risk_level === "低风险" ? "🟢" : "✅"
-      const report = [
-        `## 🩺 肺栓塞诊断报告`,
-        ``,
-        `| 项目 | 结果 |`,
-        `|------|------|`,
-        `| 📂 影像文件 | \`${res.filename}\` |`,
-        `| ${riskEmoji} 诊断结果 | **${res.risk_level}** (${res.prediction ? "阳性" : "阴性"}) |`,
-        `| 📊 肺栓塞概率 | **${(res.probability * 100).toFixed(2)}%** |`,
-        `| ⏱️ 推理耗时 | ${res.inference_time.toFixed(2)}s |`,
-        ``,
-        `> ⚠️ **免责声明:** 本结果为 AI 辅助诊断建议，仅供参考。`,
-      ].join("\n")
-      setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, content: report, isStreaming: false, elapsed: res.total_time } : m)))
-    } catch {
-      setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, content: "❌ 诊断失败", isStreaming: false } : m)))
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
   const clearMessages = useCallback(() => {
     setMessages([])
     sessionIdRef.current = ""
@@ -199,5 +173,5 @@ export function useChat() {
     }
   }, [messages])
 
-  return { messages, isLoading, sendMessage, expandAnswer, diagnose, clearMessages, submitFeedback }
+  return { messages, isLoading, sendMessage, expandAnswer, clearMessages, submitFeedback }
 }

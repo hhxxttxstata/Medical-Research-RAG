@@ -37,12 +37,16 @@ from src.rag_pipeline import RAGPipeline  # noqa: E402
 questions = get_test_questions()
 print_question_summary(questions)
 
+# Milvus 后端：默认 Milvus Lite（免 Docker）；设 MILVUS_LITE=false 用 Docker Milvus
+_use_lite = os.getenv("MILVUS_LITE", "true").lower() == "true"
 pipeline = RAGPipeline(
     data_dir="data",
     top_k=10,
     enable_rewrite=False,
     enable_reranker=False,
-    milvus_lite=True,
+    milvus_lite=_use_lite,
+    milvus_host=os.getenv("MILVUS_HOST", "localhost"),
+    milvus_port=os.getenv("MILVUS_PORT", "19530"),
     vector_backend="milvus",
 )
 
@@ -118,14 +122,18 @@ metrics = compute_all_metrics(records)
 print_metrics_report(metrics)
 print(f"  ⏱  总耗时: {elapsed:.1f}s  ({(elapsed / len(questions)):.1f}s/题)\n")
 
-# ── 2. Bad Case 诊断 ──
+# ── 2. Bad Case 诊断（可选：脚本已归档至 scripts/archive/） ──
 print("=" * 70)
 print("  🔍 阶段 2：Bad Case 诊断")
 print("=" * 70)
-from scripts.bad_case_review import find_bad_cases, print_bad_case_report  # noqa: E402
+bad_cases = []
+try:
+    from scripts.bad_case_review import find_bad_cases, print_bad_case_report  # noqa: E402
 
-bad_cases = find_bad_cases(records)
-print_bad_case_report(bad_cases)
+    bad_cases = find_bad_cases(records)
+    print_bad_case_report(bad_cases)
+except (ImportError, ModuleNotFoundError):
+    print("  ⚠️ scripts/bad_case_review.py 已归档（scripts/archive/），跳过 bad case 诊断")
 
 pipeline.close()
 

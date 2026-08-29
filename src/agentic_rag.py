@@ -686,7 +686,10 @@ class AgenticRAG:
         unsupported = grade.get("unsupported") or (
             grade.get("decision") == "insufficient" and self._grader_hints_unsupported(grade)
         )
-        if unsupported and not (self._is_multi_part(question) and not state.hops):
+        # B1：_is_multi_part 只含多问号；对比/并列词并入 _is_comparison，
+        # 合并判断以保持 v2 冻结行为（对比题同享 multi-part 豁免与门控）
+        multi_part_signal = self._is_multi_part(question) or self._is_comparison(question)
+        if unsupported and not (multi_part_signal and not state.hops):
             # 时间敏感/领域外：预算未耗尽时给一次 targeted 机会，否则 ABSTAIN
             if state.retrieval_budget > 0 and state.iteration < self.max_iterations:
                 grade["reason"] = "证据不支撑答案（grader），targeted 再试一次"
@@ -698,7 +701,7 @@ class AgenticRAG:
         # v1 把 multi-part 交 LLM policy 自由选择，导致 RETRIEVE 而非拆解；
         # v2 结构判断命中（多问号/对比词/并列）→ 直接走 plan 流程。
         # 例外：已尝试过拆解（LLM 认为不需要）→ 不再重复，走单跳路径。
-        if self._is_multi_part(question) and not state.hops and not state.decompose_attempted:
+        if multi_part_signal and not state.hops and not state.decompose_attempted:
             grade["reason"] = "问题含多个独立子问题，生成结构化 plan"
             return "INSUFFICIENT", "DECOMPOSE", "signal"
 
@@ -709,8 +712,8 @@ class AgenticRAG:
             return "SUFFICIENT", "ACCEPT", "rule"
 
         if reranker_ready:
-            # 信号硬规则：top1 高度相关 → ACCEPT（单跳问题）
-            if top1_rel >= 0.5 and not self._is_multi_part(question):
+            # 信号硬规则：top1 高度相关 → ACCEPT（单跳问题；multi-part/对比除外）
+            if top1_rel >= 0.5 and not multi_part_signal:
                 grade["reason"] = f"top1 证据相关性 {top1_rel:.2f}（cross-encoder 高相关）"
                 return "SUFFICIENT", "ACCEPT", "signal"
             # 完全无相关证据：预算未耗尽 → RETRIEVE；耗尽 → ABSTAIN
@@ -781,15 +784,22 @@ class AgenticRAG:
 
     @staticmethod
     def _is_multi_part(question: str) -> bool:
-        """结构判断：问题是否含多个独立子问题（需要分步检索）
+        """结构判断：问题是否含多个独立子问题（需要分步检索）——B1 修正版
 
-        v2 修正（bh_easy_03/hard_02/hard_03 实证）："X和Y分别"不一定是 multi-part——
-        同一主题的并列属性（"窗宽和窗位"）单跳即可答；词法判断"共享实体"过于脆弱
-        （"外部验证集"在分句间共享但问题是两个独立信息）。
+        只保留**多问号**这一个可靠信号（"…？…？"= 两个独立子问题）：
+          - 分句共享英文实体 → 同主题追问（"DICOM…？转换公式…？"）不算
+          - 后分句是极短裸问（≤8 字符，无新主题名词）→ 追问而非独立子问题
+            不算（"转换公式是什么？"=7；对比"急性血栓的征象有哪些？"=10
+            含主题名词）
 
-        设计决策：规则只保留**多问号**这一个可靠信号（"…？…？"= 两个独立子问题），
-        其余（"X和Y的区别"等）交给 LLM decompose_plan 判断（它会输出
-        decomposed:false 若不需要拆）。这样避免规则误伤 easy 题（guardrail）。
+        对比词（"X和Y的区别/对比/异同"）与并列词（"分别/各"+英文专名）
+        **不再**计入（与原 docstring 设计决策一致）——它们可能是单跳可答的
+        并列属性（"窗宽和窗位的区别"），移入 _is_comparison：
+          - v2.1 cheap gate 对 _is_comparison 走 UNCERTAIN（LLM grader 裁决
+            needs_decomposition），避免规则误拆 easy 题
+            （bh_easy_03/hard_02/hard_03 实证）
+          - v2 policy 中用 `_is_multi_part or _is_comparison` 合并判断，
+            保持 v2 冻结行为不变
         """
         # 多个问号 → 多个独立子问题（最可靠信号）
         n_q = question.count("？") + question.count("?")
@@ -805,10 +815,23 @@ class AgenticRAG:
                 if len(parts[1]) <= 8 and not ents[1]:
                     return False
             return True
-        # 单问号 + 明确对比词（"A和B的区别"）→ 两个不同实体
+        return False
+
+    @staticmethod
+    def _is_comparison(question: str) -> bool:
+        """对比/并列结构信号（B1 新增）：可能多跳、但不确定 → 交 LLM grader 裁决
+
+        - 对比词："X和Y的区别/对比/异同"——"窗宽和窗位的区别"可能单跳可答，
+          不能规则直判 DECOMPOSE；v2.1 cheap gate 走 UNCERTAIN，由 grader
+          判 needs_decomposition（→ DECOMPOSE）或 sufficient（→ ACCEPT）
+        - 并列："X和Y分别…/各…" + 英文专名（"U-Net和TransUNet"）→ 不同实体，
+          同上交 grader；纯中文并列（"窗宽和窗位分别是什么"）不算（单跳可答）
+
+        v2 policy 中与 _is_multi_part 合并使用（保持冻结行为）；v2.1 中
+        单独触发 UNCERTAIN（B1：不直接 DECOMPOSE，避免误拆单跳对比题）。
+        """
         if any(k in question for k in ("区别", "对比", "异同")):
             return True
-        # 单问号 + "A和B分别" + 英文专名（"U-Net和TransUNet"）→ 不同实体
         if ("和" in question or "与" in question) and ("分别" in question or "各" in question):
             return bool(re.search(r"[A-Za-z][A-Za-z0-9\-]{2,}", question))
         return False

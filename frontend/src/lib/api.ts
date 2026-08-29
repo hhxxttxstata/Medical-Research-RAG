@@ -22,11 +22,6 @@ export interface AgentInfo {
   confidence?: number
   react_steps?: number
   react_termination?: string
-  diagnosis_result?: {
-    probability: number
-    prediction: number
-    risk_level: string
-  }
   fallback_to_rag?: boolean
 }
 
@@ -46,20 +41,6 @@ export interface ChatResponse {
   agent_info: AgentInfo | null
   process_log: ProcessLogEntry[]
   session_id: string
-}
-
-export interface DiagnosisResponse {
-  success: boolean
-  probability: number
-  prediction: number
-  risk_level: string
-  threshold: number
-  positive_voxel_ratio: number
-  inference_time: number
-  total_time: number
-  filename: string
-  error: string | null
-  visualization: Record<string, string> | null
 }
 
 export interface HealthResponse {
@@ -139,12 +120,6 @@ export const api = {
 
   chat(req: ChatRequest, sessionId?: string): Promise<ChatResponse> {
     return postJSON<ChatResponse>(`${API_BASE}/chat`, req, sessionId)
-  },
-
-  diagnose(file: File): Promise<DiagnosisResponse> {
-    const fd = new FormData()
-    fd.append("file", file)
-    return postFormData<DiagnosisResponse>(`${API_BASE}/diagnosis/predict`, fd)
   },
 
   stats(): Promise<StatsResponse> {

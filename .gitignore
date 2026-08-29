@@ -42,22 +42,25 @@ evaluation_report.json
 # 覆盖率数据
 .coverage
 
-# 诊断上传的临时文件
-data/diagnosis_uploads/
-
 # 评测结果（final 报告入库保证可复现，中间产物忽略）
 eval_results/*
 !eval_results/step13*.json
 !eval_results/step14_cost_ablation_*.json
 !eval_results/step15_grounded_final.json
 !eval_results/step16_runtime_parity_final.json
+!eval_results/cross_doc_eval_*.json
 
 # Trivy 安全检查产物（一次性扫描日志）
 trivy_extracted3/
 trivy_logs3.zip
 
-# 模型权重
-models/*.pth
-
 # .claude
 .claude/
+
+# 前端构建产物
+frontend/.next/
+frontend/tsconfig.tsbuildinfo
+
+# 个人资料目录（非知识库，不入库）
+data-hold/
+reference/

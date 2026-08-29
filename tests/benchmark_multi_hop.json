@@ -1,15 +1,24 @@
 {
-  "_comment": "Step 12: Agentic Capability / Multi-hop Benchmark。基于知识库真实文档内容构造，hop-level Gold 人工核对原文。设计目标：Fixed RAG 在此数据集上有真实失败空间（Rescue > 0 可能发生）。",
+  "_comment": "Step 12: Agentic Capability / Multi-hop Benchmark。基于知识库真实文档内容构造，hop-level Gold 人工核对原文。设计目标：Fixed RAG 在此数据集上有真实失败空间（Rescue > 0 可能发生）。 2026-08-17 gold 修正：bh_hard_02/bh_constraint_01/bh_constraint_02 的 gold 指向概述/错误 chunk，改为事实所在 chunk（qualify 门禁实测发现）。",
   "benchmark": [
     {
       "id": "bh_easy_01",
       "type": "easy_single_hop",
       "question": "肺结节检测方案中，LUNA16 数据集包含多少例低剂量胸部 CT 扫描图像？",
       "hops": [
-        {"hop": 1, "question": "肺结节检测方案使用什么数据集，包含多少例CT扫描？", "gold_chunk_ids": ["02_CT影像肺结节检测技术方案_small_1"]}
+        {
+          "hop": 1,
+          "question": "肺结节检测方案使用什么数据集，包含多少例CT扫描？",
+          "gold_chunk_ids": [
+            "02_CT影像肺结节检测技术方案_small_1"
+          ]
+        }
       ],
       "final_answer": "888 例",
-      "expected_route": ["RETRIEVE", "ACCEPT"],
+      "expected_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
       "notes": "单跳、单文档、直接数字 → Agent 不应过度思考"
     },
     {
@@ -17,10 +26,19 @@
       "type": "easy_single_hop",
       "question": "U-Net 在 PhC-U373 数据集上达到多少 IoU？",
       "hops": [
-        {"hop": 1, "question": "U-Net 在 PhC-U373 数据集上的 IoU 是多少？", "gold_chunk_ids": ["03_U-Net医学图像分割论文笔记_small_3"]}
+        {
+          "hop": 1,
+          "question": "U-Net 在 PhC-U373 数据集上的 IoU 是多少？",
+          "gold_chunk_ids": [
+            "03_U-Net医学图像分割论文笔记_small_3"
+          ]
+        }
       ],
       "final_answer": "92.5%",
-      "expected_route": ["RETRIEVE", "ACCEPT"],
+      "expected_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
       "notes": "单跳数字查询"
     },
     {
@@ -28,10 +46,19 @@
       "type": "easy_single_hop",
       "question": "CT 影像预处理中，肺窗的窗宽和窗位分别设置为多少？",
       "hops": [
-        {"hop": 1, "question": "肺结节检测的 CT 预处理中肺窗的窗宽窗位是多少？", "gold_chunk_ids": ["02_CT影像肺结节检测技术方案_small_1"]}
+        {
+          "hop": 1,
+          "question": "肺结节检测的 CT 预处理中肺窗的窗宽窗位是多少？",
+          "gold_chunk_ids": [
+            "02_CT影像肺结节检测技术方案_small_1"
+          ]
+        }
       ],
       "final_answer": "窗宽 1500 HU，窗位 -600 HU",
-      "expected_route": ["RETRIEVE", "ACCEPT"],
+      "expected_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
       "notes": "单跳数值"
     },
     {
@@ -39,10 +66,20 @@
       "type": "hard_single_hop",
       "question": "模型在外部验证集上的敏感度相比内部测试集下降了多少个百分点？",
       "hops": [
-        {"hop": 1, "question": "AI模型评估报告中的检测性能指标有哪些？", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_1"]}
+        {
+          "hop": 1,
+          "question": "AI模型评估报告中的检测性能指标有哪些？",
+          "gold_chunk_ids": [
+            "08_AI模型评估与验证报告_small_1"
+          ]
+        }
       ],
       "final_answer": "2.6 个百分点（96.3% → 93.7%）",
-      "expected_route": ["RETRIEVE", "RETRIEVE", "ACCEPT"],
+      "expected_route": [
+        "RETRIEVE",
+        "RETRIEVE",
+        "ACCEPT"
+      ],
       "notes": "单跳但需要数值对比，首次检索可能只命中表格局部 → 检验 Retry"
     },
     {
@@ -50,10 +87,20 @@
       "type": "hard_single_hop",
       "question": "训练过程中，第一阶段预训练和第二阶段微调的学习率分别是什么？",
       "hops": [
-        {"hop": 1, "question": "肺结节检测模型的训练策略和学习率设置", "gold_chunk_ids": ["02_CT影像肺结节检测技术方案_small_1"]}
+        {
+          "hop": 1,
+          "question": "肺结节检测模型的训练策略和学习率设置",
+          "gold_chunk_ids": [
+            "02_CT影像肺结节检测技术方案_small_2"
+          ]
+        }
       ],
       "final_answer": "预训练 0.001，微调 0.0001",
-      "expected_route": ["RETRIEVE", "RETRIEVE", "ACCEPT"],
+      "expected_route": [
+        "RETRIEVE",
+        "RETRIEVE",
+        "ACCEPT"
+      ],
       "notes": "同一文档两个数值，检索可能只命中其一 → Retry"
     },
     {
@@ -61,10 +108,20 @@
       "type": "hard_single_hop",
       "question": "DICOM 像素值转换为 HU 值时，需要用到哪两个参数？转换公式是什么？",
       "hops": [
-        {"hop": 1, "question": "DICOM像素值到HU值的转换参数和公式", "gold_chunk_ids": ["DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理_small_1"]}
+        {
+          "hop": 1,
+          "question": "DICOM像素值到HU值的转换参数和公式",
+          "gold_chunk_ids": [
+            "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理_small_1"
+          ]
+        }
       ],
       "final_answer": "Rescale Slope 和 Rescale Intercept",
-      "expected_route": ["RETRIEVE", "RETRIEVE", "ACCEPT"],
+      "expected_route": [
+        "RETRIEVE",
+        "RETRIEVE",
+        "ACCEPT"
+      ],
       "notes": "需要精确公式，检验检索召回"
     },
     {
@@ -72,11 +129,28 @@
       "type": "multi_hop_composition",
       "question": "肺结节检测模型的敏感度要求是多少？该模型推理加速使用什么框架？",
       "hops": [
-        {"hop": 1, "question": "肺结节检测模型的性能指标中敏感度要求是多少？", "gold_chunk_ids": ["02_CT影像肺结节检测技术方案_small_2"]},
-        {"hop": 2, "question": "肺结节检测模型的推理部署使用什么框架加速？", "gold_chunk_ids": ["02_CT影像肺结节检测技术方案_small_3"]}
+        {
+          "hop": 1,
+          "question": "肺结节检测模型的性能指标中敏感度要求是多少？",
+          "gold_chunk_ids": [
+            "02_CT影像肺结节检测技术方案_small_2"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "肺结节检测模型的推理部署使用什么框架加速？",
+          "gold_chunk_ids": [
+            "02_CT影像肺结节检测技术方案_small_3"
+          ]
+        }
       ],
       "final_answer": "敏感度 > 95%，TensorRT 加速",
-      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"],
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ],
       "notes": "同文档两个不同小节（性能指标+推理部署）→ multi-hop composition"
     },
     {
@@ -84,11 +158,28 @@
       "type": "multi_hop_composition",
       "question": "AI 模型在外部验证集中的 AUC 是多少？该外部验证集来自多少家不同层级的医院？",
       "hops": [
-        {"hop": 1, "question": "AI模型评估报告中外部验证集的AUC是多少？", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_1"]},
-        {"hop": 2, "question": "外部验证集收集自多少家不同层级的医院？", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_1"]}
+        {
+          "hop": 1,
+          "question": "AI模型评估报告中外部验证集的AUC是多少？",
+          "gold_chunk_ids": [
+            "08_AI模型评估与验证报告_small_1"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "外部验证集收集自多少家不同层级的医院？",
+          "gold_chunk_ids": [
+            "08_AI模型评估与验证报告_small_1"
+          ]
+        }
       ],
       "final_answer": "AUC=0.953，来自 5 家医院",
-      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"],
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ],
       "notes": "同文档两处信息 → composition"
     },
     {
@@ -96,11 +187,28 @@
       "type": "multi_hop_composition",
       "question": "sPESI 评分中，年龄超过多少岁记 1 分？该评分预测 30 天死亡率的灵敏度是多少？",
       "hops": [
-        {"hop": 1, "question": "sPESI评分中年龄超过多少岁记1分？", "gold_chunk_ids": ["临床危险分层：理解sPESI评分_small_1"]},
-        {"hop": 2, "question": "sPESI预测30天死亡率的灵敏度是多少？", "gold_chunk_ids": ["临床危险分层：理解sPESI评分_small_2"]}
+        {
+          "hop": 1,
+          "question": "sPESI评分中年龄超过多少岁记1分？",
+          "gold_chunk_ids": [
+            "临床危险分层：理解sPESI评分_small_1"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "sPESI预测30天死亡率的灵敏度是多少？",
+          "gold_chunk_ids": [
+            "临床危险分层：理解sPESI评分_small_2"
+          ]
+        }
       ],
       "final_answer": "年龄 > 80 岁记 1 分，灵敏度 96%",
-      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"],
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ],
       "notes": "同文档跨段落 composition（评分表 + 研究数据）"
     },
     {
@@ -108,11 +216,28 @@
       "type": "comparison",
       "question": "U-Net 的编码器和解码器分别由多少个块组成？",
       "hops": [
-        {"hop": 1, "question": "U-Net编码器由几个下采样块组成？", "gold_chunk_ids": ["03_U-Net医学图像分割论文笔记_small_1"]},
-        {"hop": 2, "question": "U-Net解码器由几个上采样块组成？", "gold_chunk_ids": ["03_U-Net医学图像分割论文笔记_small_1"]}
+        {
+          "hop": 1,
+          "question": "U-Net编码器由几个下采样块组成？",
+          "gold_chunk_ids": [
+            "03_U-Net医学图像分割论文笔记_small_1"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "U-Net解码器由几个上采样块组成？",
+          "gold_chunk_ids": [
+            "03_U-Net医学图像分割论文笔记_small_1"
+          ]
+        }
       ],
       "final_answer": "编码器 4 个下采样块，解码器 4 个上采样块",
-      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"],
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ],
       "notes": "对比类：两个部分分别检索 → Comparison"
     },
     {
@@ -120,11 +245,28 @@
       "type": "comparison",
       "question": "急性肺栓塞与慢性肺栓塞在影像学上如何鉴别？急性血栓的征象有哪些？",
       "hops": [
-        {"hop": 1, "question": "急性肺栓塞的病理生理特征是什么？", "gold_chunk_ids": ["PE的病理分型：急性 vs. 慢性_small_1"]},
-        {"hop": 2, "question": "CTPA影像上急性血栓的征象有哪些？", "gold_chunk_ids": ["CTPA影像表现：从直接到间接_small_1"]}
+        {
+          "hop": 1,
+          "question": "急性肺栓塞的病理生理特征是什么？",
+          "gold_chunk_ids": [
+            "PE的病理分型：急性 vs. 慢性_small_1"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "CTPA影像上急性血栓的征象有哪些？",
+          "gold_chunk_ids": [
+            "CTPA影像表现：从直接到间接_small_1"
+          ]
+        }
       ],
       "final_answer": "急性血栓征象：马鞍征、环征/轨道征、附壁血栓（锐角）",
-      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"],
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ],
       "notes": "跨两文档 comparison（病理 + 影像）"
     },
     {
@@ -132,11 +274,28 @@
       "type": "comparison",
       "question": "内部测试集和外部验证集的特异度分别是多少？哪个数据集的特异度更高？",
       "hops": [
-        {"hop": 1, "question": "内部测试集的特异度是多少？", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_1"]},
-        {"hop": 2, "question": "外部验证集的特异度是多少？", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_1"]}
+        {
+          "hop": 1,
+          "question": "内部测试集的特异度是多少？",
+          "gold_chunk_ids": [
+            "08_AI模型评估与验证报告_small_1"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "外部验证集的特异度是多少？",
+          "gold_chunk_ids": [
+            "08_AI模型评估与验证报告_small_1"
+          ]
+        }
       ],
       "final_answer": "内部 91.8%，外部 88.5%，内部更高",
-      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"],
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ],
       "notes": "两处表格数值对比"
     },
     {
@@ -144,10 +303,19 @@
       "type": "constraint_query",
       "question": "肺结节检测方案中，针对正负样本不平衡问题，训练阶段引入了什么损失函数？",
       "hops": [
-        {"hop": 1, "question": "肺结节检测训练中的损失函数", "gold_chunk_ids": ["02_CT影像肺结节检测技术方案_small_1"]}
+        {
+          "hop": 1,
+          "question": "肺结节检测训练中的损失函数",
+          "gold_chunk_ids": [
+            "02_CT影像肺结节检测技术方案_small_2"
+          ]
+        }
       ],
       "final_answer": "Focal Loss",
-      "expected_route": ["RETRIEVE", "ACCEPT"],
+      "expected_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
       "notes": "约束条件（针对XX问题）+ 具体答案 → 防止 topic-match 假阳性"
     },
     {
@@ -155,10 +323,19 @@
       "type": "constraint_query",
       "question": "在 CTPA 有禁忌证（如造影剂过敏）时，肺栓塞确诊应选择哪种替代检查？",
       "hops": [
-        {"hop": 1, "question": "CTPA禁忌证时的替代检查", "gold_chunk_ids": ["诊断流程指南：从怀疑到确诊_small_1"]}
+        {
+          "hop": 1,
+          "question": "CTPA禁忌证时的替代检查",
+          "gold_chunk_ids": [
+            "诊断流程指南：从怀疑到确诊_small_2"
+          ]
+        }
       ],
       "final_answer": "核素肺通气/灌注（V/Q）显像",
-      "expected_route": ["RETRIEVE", "ACCEPT"],
+      "expected_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ],
       "notes": "约束场景 + 明确答案"
     },
     {
@@ -166,11 +343,28 @@
       "type": "partial_evidence",
       "question": "医学图像标注的质量控制流程有哪些环节？标注质量如何影响 AI 模型性能？",
       "hops": [
-        {"hop": 1, "question": "医学图像标注的质量控制流程", "gold_chunk_ids": ["11_医学图像数据标注规范_small_2"]},
-        {"hop": 2, "question": "标注质量如何影响AI模型性能", "gold_chunk_ids": ["11_医学图像数据标注规范_small_2"]}
+        {
+          "hop": 1,
+          "question": "医学图像标注的质量控制流程",
+          "gold_chunk_ids": [
+            "11_医学图像数据标注规范_small_2"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "标注质量如何影响AI模型性能",
+          "gold_chunk_ids": [
+            "11_医学图像数据标注规范_small_2"
+          ]
+        }
       ],
       "final_answer": "质量控制流程 + 标注质量对模型性能的影响",
-      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"],
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ],
       "notes": "两个子问题，证据分散 → 继续检索"
     },
     {
@@ -178,11 +372,28 @@
       "type": "partial_evidence",
       "question": "从 DICOM 原始数据到深度学习模型可用的 NIfTI 格式，需要经过哪些处理步骤？体素重采样的目的是什么？",
       "hops": [
-        {"hop": 1, "question": "DICOM转NIfTI的处理步骤", "gold_chunk_ids": ["DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理_small_1"]},
-        {"hop": 2, "question": "体素重采样的目的是什么", "gold_chunk_ids": ["DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理_small_1"]}
+        {
+          "hop": 1,
+          "question": "DICOM转NIfTI的处理步骤",
+          "gold_chunk_ids": [
+            "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理_small_1"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "体素重采样的目的是什么",
+          "gold_chunk_ids": [
+            "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理_small_1"
+          ]
+        }
       ],
       "final_answer": "处理步骤 + 重采样目的",
-      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"],
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ],
       "notes": "部分证据 → 需多轮检索补齐"
     },
     {
@@ -191,7 +402,10 @@
       "question": "如何用 Python 的 asyncio 实现高性能 WebSocket 服务器？",
       "hops": [],
       "final_answer": "",
-      "expected_route": ["RETRIEVE", "ABSTAIN"],
+      "expected_route": [
+        "RETRIEVE",
+        "ABSTAIN"
+      ],
       "notes": "OOD：知识库无相关技术内容"
     },
     {
@@ -200,7 +414,10 @@
       "question": "2026 年欧洲心脏病学会年会发布了哪些新的肺栓塞指南？",
       "hops": [],
       "final_answer": "",
-      "expected_route": ["RETRIEVE", "ABSTAIN"],
+      "expected_route": [
+        "RETRIEVE",
+        "ABSTAIN"
+      ],
       "notes": "时间敏感 + 库外"
     }
   ]

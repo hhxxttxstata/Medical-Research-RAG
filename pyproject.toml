@@ -1,37 +1,30 @@
 [project]
 name = "pe-rag-system"
 version = "2.0.0"
-description = "Pulmonary Embolism RAG + Agent + Diagnosis System"
+description = "Pulmonary Embolism Research Literature RAG Q&A System"
 requires-python = ">=3.10"
 
 [tool.ruff]
 target-version = "py310"
 line-length = 120
+exclude = [
+    "scripts/archive/",
+    "docs/archive/",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
 ignore = ["E501", "B008", "B904", "E741", "SIM105", "SIM115", "UP007"]
 
 [tool.ruff.lint.per-file-ignores]
-"gradio_app.py" = ["SIM103", "B007"]
 "scripts/*" = ["N806", "F841", "E402", "SIM108", "B007", "I001", "UP038"]
-"scripts/step7_rerank_query_oracle.py" = ["SIM102"]
-"scripts/step8_recon.py" = ["SIM109"]
-"teacher/*" = ["B905", "SIM108", "SIM115", "N806", "F841", "E402", "UP038", "I001"]
 "eval/*" = ["B905", "B007", "F841", "UP038"]
 "tests/*" = ["F841"]
 "src/generator.py" = ["E402", "F841"]
 "src/document_processor.py" = ["SIM102", "SIM108"]
-"src/diagnosis.py" = ["N806", "N812", "F401"]
-"src/memory.py" = ["SIM115", "F841"]
-"src/agent.py" = ["B905"]
 "src/rag_pipeline.py" = ["SIM115"]
-"src/mcp_server.py" = ["E402"]
 "src/retriever.py" = ["B905"]
 "src/text_splitter.py" = ["SIM108"]
-"src/tools/report_generator.py" = ["SIM102"]
-"src/monitoring/tracing.py" = ["SIM102"]
-"teacher/resnet25d_attention.py" = ["N812", "N801", "UP038"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -43,7 +36,6 @@ warn_unused_ignores = true
 ignore_missing_imports = true
 exclude = [
     "tests/",
-    "teacher/",
     "eval/",
     "build/",
 ]

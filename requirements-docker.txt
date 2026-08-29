@@ -9,9 +9,6 @@ uvicorn[standard]>=0.49.0
 python-multipart>=0.0.20
 watchdog>=6.0.0
 redis>=5.0.0
-nibabel>=5.0.0
-scipy>=1.7.0
-matplotlib
 pymilvus>=2.5.0
 pymupdf>=1.25.0
 langgraph>=1.0.0

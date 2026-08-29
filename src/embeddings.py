@@ -134,7 +134,10 @@ class SentenceTransformerEmbedding(EmbeddingProvider):
                     self._model = SentenceTransformer(model_path)
             else:
                 self._model = SentenceTransformer(model_path)
-            print(f"  ✅ 模型加载完成 (维度: {self._model.get_sentence_embedding_dimension()})")
+            dim_fn = (
+                getattr(self._model, "get_embedding_dimension", None) or self._model.get_sentence_embedding_dimension
+            )
+            print(f"  ✅ 模型加载完成 (维度: {dim_fn()})")
 
     def warmup(self) -> None:
         """预热：加载模型并跑一次小推理，避免首次请求卡顿"""

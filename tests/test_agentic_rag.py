@@ -78,11 +78,33 @@ def test_is_topically_related_ood(agent):
 
 
 def test_is_multi_part(agent):
-    """结构判断：多子问题识别"""
+    """结构判断（B1 契约）：_is_multi_part 只保留多问号可靠信号"""
+    # 多问号 → 多独立子问题
     assert agent._is_multi_part("急性肺栓塞和慢性肺栓塞有什么区别？CTPA影像如何鉴别？") is True
-    assert agent._is_multi_part("U-Net和TransUNet在医学图像分割中各有什么优势和局限？") is True
+    assert agent._is_multi_part("肺栓塞的诊断标准是什么？溶栓治疗的适应症有哪些？") is True
+    # 同主题追问（共享实体）→ 不算
+    assert agent._is_multi_part("DICOM是什么？转换公式是什么？") is False
+    # 极短裸问（≤8 字符无新主题名词）→ 追问而非独立子问题
+    assert agent._is_multi_part("敏感度要求是多少？推理框架是什么？") is False
+    # 单问号简单题 → 不算
     assert agent._is_multi_part("sPESI评分中收缩压低于多少mmHg记1分？") is False
     assert agent._is_multi_part("肺栓塞如何治疗？") is False
+    # B1：对比词/并列词不再计入（移入 _is_comparison）
+    assert agent._is_multi_part("U-Net和TransUNet在医学图像分割中各有什么优势和局限？") is False
+
+
+def test_is_comparison(agent):
+    """对比/并列结构信号（B1）：走 LLM grader 裁决，不直接 DECOMPOSE"""
+    # 对比词（可能单跳可答，如"窗宽和窗位的区别"）
+    assert agent._is_comparison("U-Net和TransUNet在医学图像分割中各有什么优势和局限？") is True
+    assert agent._is_comparison("急性肺栓塞和慢性肺栓塞有什么区别？") is True
+    assert agent._is_comparison("窗宽和窗位的区别是什么？") is True
+    # 并列 + 英文专名 → 不同实体
+    assert agent._is_comparison("CTPA与MRPA在肺栓塞诊断中分别有什么优势？") is True
+    # 非对比 → False
+    assert agent._is_comparison("sPESI评分中收缩压低于多少mmHg记1分？") is False
+    assert agent._is_comparison("肺栓塞如何治疗？") is False
+    assert agent._is_comparison("敏感度要求是多少？推理框架是什么？") is False
 
 
 def test_entity_overlap(agent):

@@ -98,6 +98,23 @@ _RERANK_USER_PROMPT = """用户问题：{query}
 输出 JSON："""
 
 
+# ── 知识域过滤辅助 ────────────────────────────────
+
+
+def _domain_filter(domain: str | None) -> str | None:
+    """Milvus JSON filter 表达式（metadata.domain == <domain>）"""
+    if not domain:
+        return None
+    return f'metadata["domain"] == "{domain}"'
+
+
+def _filter_by_domain(chunks: list[dict[str, Any]], domain: str | None) -> list[dict[str, Any]]:
+    """按 metadata.domain 过滤结果（BM25 侧无存储级 filter，用后置过滤）"""
+    if not domain:
+        return chunks
+    return [c for c in chunks if (c.get("metadata") or {}).get("domain") == domain]
+
+
 class Retriever:
     """检索器（三级召回：Query Rewriting + 向量+BM25 + Reranker）
 
@@ -125,6 +142,7 @@ class Retriever:
         enable_rewrite: bool = True,
         enable_reranker: bool = True,
         rerank_top_k: int = 10,
+        max_per_doc: int = 2,
         reranker=None,
         bm25_backend: str = "memory",
         bm25_index_dir: str = "lucene_bm25_index",
@@ -139,6 +157,7 @@ class Retriever:
         self.enable_rewrite = enable_rewrite if generator else False
         self.enable_reranker = enable_reranker if generator else False
         self.rerank_top_k = rerank_top_k
+        self.max_per_doc = max_per_doc
         self._reranker = reranker
         self._bm25 = None
         self._bm25_backend = bm25_backend if generator else "memory"
@@ -154,23 +173,42 @@ class Retriever:
     #  主入口
     # ══════════════════════════════════════════════════
 
-    def retrieve(self, query: str, top_k: int | None = None) -> list[dict[str, Any]]:
+    def retrieve(self, query: str, top_k: int | None = None, domain: str | None = None) -> list[dict[str, Any]]:
         """三级召回流水线
 
         1. Rewrite Gate — 规则判断是否需要改写；若初始检索分低也触发
         2. Hybrid Search（向量 + BM25 -> RRF）
         3. Reranker（可选）
+
+        Args:
+            domain: 知识域过滤（pe_literature / writing_guidelines 等，
+                取 chunk metadata.domain；None 表示不过滤）
         """
         k = top_k or self.top_k
 
         # ── 无 LLM → 纯向量检索（兼容旧版） ──
         if self.generator is None:
             query_embedding = self.embedding_provider.embed([query], prefix="query: ")[0]
-            results = self.vector_store.similarity_search(query_embedding=query_embedding, top_k=k)
+            where = _domain_filter(domain)
+            if where is not None:
+                results = self.vector_store.similarity_search(query_embedding=query_embedding, top_k=k * 2, where=where)
+            else:
+                results = self.vector_store.similarity_search(query_embedding=query_embedding, top_k=k * 2)
+            results = _filter_by_domain(results, domain)
             for r in results:
                 r.pop("_rrf_score", None)
                 r.pop("_retriever", None)
-            return results
+            # 文档级多样性（与完整分支一致）
+            diverse = self._diversify_by_doc(results, max_per_doc=self.max_per_doc)
+            if len(diverse) < k:
+                diverse_ids = {r["id"] for r in diverse}
+                for r in results:
+                    if r["id"] not in diverse_ids:
+                        diverse.append(r)
+                        diverse_ids.add(r["id"])
+                        if len(diverse) >= k:
+                            break
+            return diverse[:k]
 
         # 记录原始 query，供后续区分改写 query
         self._original_query = query
@@ -191,7 +229,7 @@ class Retriever:
         fetch_k = max(k * 2, 20)
 
         for sq in search_queries:
-            results = self._hybrid_retrieve(sq, fetch_k=fetch_k)
+            results = self._hybrid_retrieve(sq, fetch_k=fetch_k, domain=domain)
             per_query_results.append(results)
             for r in results:
                 if r["id"] not in seen_ids:
@@ -214,6 +252,22 @@ class Retriever:
             all_results = [v["result"] for _, v in sorted(score_map.items(), key=lambda x: x[1]["score"], reverse=True)]
         else:
             all_results = per_query_results[0]
+
+        # ── 阶段 1.5: 文档级多样性（服务链路） ──
+        # 大文档 chunk 数多，向量/BM25 天然偏向它们 → top-k 常被同一文档霸榜
+        # （实测混合 query 的 top10 曾 9/10 来自同一篇论文）。
+        # 每文档最多 max_per_doc 条；不足 k 时用被跳过的候选补齐，保证召回不缩水。
+        # 注：仅作用于 retrieve()（服务链路）；agentic 评测冻结的 _hybrid_retrieve 不在此列。
+        diverse = self._diversify_by_doc(all_results, max_per_doc=self.max_per_doc)
+        if len(diverse) < k:
+            seen_ids = {r["id"] for r in diverse}
+            for r in all_results:
+                if r["id"] not in seen_ids:
+                    diverse.append(r)
+                    seen_ids.add(r["id"])
+                    if len(diverse) >= k:
+                        break
+        all_results = diverse[:k]
 
         # ── 阶段 2: Reranker ──
         candidates = all_results[: self.rerank_top_k]
@@ -328,17 +382,29 @@ class Retriever:
     #  Hybrid Search（向量 + BM25 → RRF）
     # ══════════════════════════════════════════════════
 
-    def _hybrid_retrieve(self, query: str, fetch_k: int) -> list[dict[str, Any]]:
-        """纯混合检索（不包含 rewrite / rerank），可被多条改写 query 重复调用"""
-        # 1. 向量检索（语义）
+    def _hybrid_retrieve(self, query: str, fetch_k: int, domain: str | None = None) -> list[dict[str, Any]]:
+        """纯混合检索（不包含 rewrite / rerank），可被多条改写 query 重复调用
+
+        Args:
+            domain: 知识域过滤（chunk metadata.domain），None 表示不过滤。
+                默认参数保持 agentic 冻结代码的调用签名不变。
+        """
+        # 1. 向量检索（语义）——Milvus JSON filter 下推到存储层
         query_embedding = self.embedding_provider.embed([query], prefix="query: ")[0]
-        vector_results = self.vector_store.similarity_search(query_embedding=query_embedding, top_k=fetch_k)
+        where = _domain_filter(domain)
+        if where is not None:
+            vector_results = self.vector_store.similarity_search(
+                query_embedding=query_embedding, top_k=fetch_k, where=where
+            )
+        else:
+            vector_results = self.vector_store.similarity_search(query_embedding=query_embedding, top_k=fetch_k)
         for r in vector_results:
             r["_retriever"] = "vector"
             r["_vector_score"] = r.get("score", 0.0)
 
         # 2. BM25 检索（关键词）— 不论是否改写，都走 BM25
         bm25_results = self._bm25_retrieve(query, top_k=fetch_k)
+        bm25_results = _filter_by_domain(bm25_results, domain)
 
         # 3. RRF 融合
         if bm25_results:
@@ -355,6 +421,28 @@ class Retriever:
             return fused
         else:
             return vector_results
+
+    @staticmethod
+    def _diversify_by_doc(results: list[dict[str, Any]], max_per_doc: int = 2) -> list[dict[str, Any]]:
+        """文档级多样性约束：每个源文档最多保留 max_per_doc 条 chunk
+
+        保持原始相对顺序（RRF/向量排序），仅做截断。filename 缺失的 chunk
+        视为独立文档（不限制），避免误伤无元数据的结果。
+        """
+        if max_per_doc <= 0 or len(results) <= 1:
+            return list(results)
+        counts: dict[str, int] = {}
+        out: list[dict[str, Any]] = []
+        for r in results:
+            fn = (r.get("metadata") or {}).get("filename", "") or ""
+            if not fn:
+                out.append(r)
+                continue
+            if counts.get(fn, 0) >= max_per_doc:
+                continue
+            counts[fn] = counts.get(fn, 0) + 1
+            out.append(r)
+        return out
 
     # ══════════════════════════════════════════════════
     #  Reranker

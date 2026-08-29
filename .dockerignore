@@ -23,15 +23,12 @@ Thumbs.db
 # Docker
 docker-compose.yml
 Dockerfile.backend
-Dockerfile.backend
-Dockerfile.frontend
 Dockerfile.nextjs
 
 # 运行时数据（volume 挂载，不进入镜像）
 logs/
-chroma_db/
-chroma_db_eval/
-data/diagnosis_uploads/
+milvus_db/
+lucene_bm25_index/
 
 # 前端 node_modules（体积大，镜像内自己安装）
 frontend/node_modules/
@@ -39,14 +36,11 @@ frontend/.next/
 
 # 评估与报告
 evaluation_report.json
+eval_results/
 
-# 训练代码（非部署相关）
-teacher/
-
-# 训练/模型权重（体积大，生产用 volume 挂载）
-models/*.pth
-models/*.pt
-models/*.onnx
+# 实验脚本归档（历史证据，不进入镜像）
+scripts/archive/
+docs/archive/
 
 # 部署脚本（不进入镜像）
 *.bat

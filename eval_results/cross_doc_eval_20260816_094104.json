@@ -1,0 +1,225 @@
+{
+  "timestamp": "20260816_094104",
+  "config": {
+    "top_k": 8,
+    "rewrite": false,
+    "reranker": false,
+    "max_per_doc": 2
+  },
+  "metrics": {
+    "doc_recall_at_k": 0.0,
+    "coverage_at_k": 0.0,
+    "doc_mrr_at_k": 0.0,
+    "full_coverage_rate": 0.0,
+    "at_least_one_rate": 0.0
+  },
+  "records": [
+    {
+      "id": "cross_02",
+      "question": "肺结节检测使用哪些深度学习模型？",
+      "gold_docs": [
+        "02_CT影像肺结节检测技术方案",
+        "03_U-Net医学图像分割论文笔记",
+        "06_Transformer在医学影像中的应用"
+      ],
+      "hit_docs": [],
+      "missed_docs": [
+        "02_CT影像肺结节检测技术方案",
+        "03_U-Net医学图像分割论文笔记",
+        "06_Transformer在医学影像中的应用"
+      ],
+      "ranks": {},
+      "num_retrieved": 0
+    },
+    {
+      "id": "cross_03",
+      "question": "肺栓塞的诊断流程是怎样的？从临床评估到影像确诊。",
+      "gold_docs": [
+        "诊断流程指南：从怀疑到确诊",
+        "临床危险分层：理解sPESI评分",
+        "CTPA影像表现：从直接到间接"
+      ],
+      "hit_docs": [],
+      "missed_docs": [
+        "CTPA影像表现：从直接到间接",
+        "临床危险分层：理解sPESI评分",
+        "诊断流程指南：从怀疑到确诊"
+      ],
+      "ranks": {},
+      "num_retrieved": 0
+    },
+    {
+      "id": "cross_04",
+      "question": "肺栓塞如何根据危险分层选择治疗方案？",
+      "gold_docs": [
+        "临床危险分层：理解sPESI评分",
+        "PE的病理分型：急性 vs. 慢性",
+        "诊断流程指南：从怀疑到确诊"
+      ],
+      "hit_docs": [],
+      "missed_docs": [
+        "PE的病理分型：急性 vs. 慢性",
+        "临床危险分层：理解sPESI评分",
+        "诊断流程指南：从怀疑到确诊"
+      ],
+      "ranks": {},
+      "num_retrieved": 0
+    },
+    {
+      "id": "cross_05",
+      "question": "CTPA影像上如何全面评估肺栓塞的严重程度？",
+      "gold_docs": [
+        "CTPA影像表现：从直接到间接",
+        "临床危险分层：理解sPESI评分",
+        "PE的病理分型：急性 vs. 慢性"
+      ],
+      "hit_docs": [],
+      "missed_docs": [
+        "CTPA影像表现：从直接到间接",
+        "PE的病理分型：急性 vs. 慢性",
+        "临床危险分层：理解sPESI评分"
+      ],
+      "ranks": {},
+      "num_retrieved": 0
+    },
+    {
+      "id": "cross_06",
+      "question": "从临床评估、D-二聚体检测到CTPA确诊，肺栓塞的完整诊断路径包括哪些步骤？",
+      "gold_docs": [
+        "诊断流程指南：从怀疑到确诊",
+        "CTPA影像表现：从直接到间接"
+      ],
+      "hit_docs": [],
+      "missed_docs": [
+        "CTPA影像表现：从直接到间接",
+        "诊断流程指南：从怀疑到确诊"
+      ],
+      "ranks": {},
+      "num_retrieved": 0
+    },
+    {
+      "id": "cross_07",
+      "question": "如何综合sPESI评分和血流动力学状态对肺栓塞患者进行危险分层？",
+      "gold_docs": [
+        "临床危险分层：理解sPESI评分",
+        "诊断流程指南：从怀疑到确诊"
+      ],
+      "hit_docs": [],
+      "missed_docs": [
+        "临床危险分层：理解sPESI评分",
+        "诊断流程指南：从怀疑到确诊"
+      ],
+      "ranks": {},
+      "num_retrieved": 0
+    },
+    {
+      "id": "cross_09",
+      "question": "CT影像的窗宽窗位设置与AI模型中的HU值归一化有什么关系？",
+      "gold_docs": [
+        "CT 窗宽窗位设置原理",
+        "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理",
+        "医学图像深度学习的实用窗口设置优化"
+      ],
+      "hit_docs": [],
+      "missed_docs": [
+        "CT 窗宽窗位设置原理",
+        "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理",
+        "医学图像深度学习的实用窗口设置优化"
+      ],
+      "ranks": {},
+      "num_retrieved": 0
+    },
+    {
+      "id": "cross_10",
+      "question": "U-Net和TransUNet在医学图像分割任务中各有什么优势和局限？",
+      "gold_docs": [
+        "03_U-Net医学图像分割论文笔记",
+        "06_Transformer在医学影像中的应用"
+      ],
+      "hit_docs": [],
+      "missed_docs": [
+        "03_U-Net医学图像分割论文笔记",
+        "06_Transformer在医学影像中的应用"
+      ],
+      "ranks": {},
+      "num_retrieved": 0
+    },
+    {
+      "id": "cross_13",
+      "question": "在CTPA影像上如何通过直接征象和间接征象综合区分急性和慢性肺栓塞？",
+      "gold_docs": [
+        "CTPA影像表现：从直接到间接",
+        "PE的病理分型：急性 vs. 慢性"
+      ],
+      "hit_docs": [],
+      "missed_docs": [
+        "CTPA影像表现：从直接到间接",
+        "PE的病理分型：急性 vs. 慢性"
+      ],
+      "ranks": {},
+      "num_retrieved": 0
+    },
+    {
+      "id": "cross_14",
+      "question": "医学图像标注的质量控制流程有哪些环节？标注质量如何影响AI模型性能？",
+      "gold_docs": [
+        "11_医学图像数据标注规范",
+        "08_AI模型评估与验证报告"
+      ],
+      "hit_docs": [],
+      "missed_docs": [
+        "08_AI模型评估与验证报告",
+        "11_医学图像数据标注规范"
+      ],
+      "ranks": {},
+      "num_retrieved": 0
+    },
+    {
+      "id": "cross_19",
+      "question": "sPESI临床评分和CTPA影像检查在肺栓塞诊断评估中各自承担什么角色？",
+      "gold_docs": [
+        "临床危险分层：理解sPESI评分",
+        "CTPA影像表现：从直接到间接",
+        "诊断流程指南：从怀疑到确诊"
+      ],
+      "hit_docs": [],
+      "missed_docs": [
+        "CTPA影像表现：从直接到间接",
+        "临床危险分层：理解sPESI评分",
+        "诊断流程指南：从怀疑到确诊"
+      ],
+      "ranks": {},
+      "num_retrieved": 0
+    },
+    {
+      "id": "cross_20",
+      "question": "Attention机制从NLP领域迁移到医学影像分析面临哪些挑战和限制？",
+      "gold_docs": [
+        "14_Attention机制论文笔记",
+        "06_Transformer在医学影像中的应用"
+      ],
+      "hit_docs": [],
+      "missed_docs": [
+        "06_Transformer在医学影像中的应用",
+        "14_Attention机制论文笔记"
+      ],
+      "ranks": {},
+      "num_retrieved": 0
+    },
+    {
+      "id": "cross_22",
+      "question": "医学影像AI模型的评估需要覆盖哪些维度？如何验证跨设备和跨人群的泛化能力？",
+      "gold_docs": [
+        "08_AI模型评估与验证报告",
+        "02_CT影像肺结节检测技术方案"
+      ],
+      "hit_docs": [],
+      "missed_docs": [
+        "02_CT影像肺结节检测技术方案",
+        "08_AI模型评估与验证报告"
+      ],
+      "ranks": {},
+      "num_retrieved": 0
+    }
+  ]
+}

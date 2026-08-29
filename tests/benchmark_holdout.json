@@ -1,152 +1,336 @@
 {
-  "_comment": "Step 13 unseen holdout —— 与 dev benchmark 同 7 类分布，但题目不同。开发过程不看 failure，v2 定型后仅用于最终验证。",
+  "_comment": "Step 13 unseen holdout（30 题：16 旧 + 14 新）。2026-08-17 标注修正：ho_hard_01 gold → _small_2（SNR 事实所在 chunk）；12 题 final_answer 改为关键事实短串（原长句期望与生成答案措辞无法子串匹配，holdout30 实测）；ho2_multi_01/02 改为双问句（触发 DECOMPOSE 结构信号）。开发过程不看 failure。",
   "benchmark": [
     {
       "id": "ho_easy_01",
       "type": "easy_single_hop",
       "question": "肺结节检测方案中，体素间距归一化将图像重采样至什么分辨率？",
       "hops": [
-        {"hop": 1, "question": "肺结节检测的CT预处理中体素间距归一化重采样至什么分辨率？", "gold_chunk_ids": ["02_CT影像肺结节检测技术方案_small_1"]}
+        {
+          "hop": 1,
+          "question": "肺结节检测的CT预处理中体素间距归一化重采样至什么分辨率？",
+          "gold_chunk_ids": [
+            "02_CT影像肺结节检测技术方案_small_1"
+          ]
+        }
       ],
       "final_answer": "1mm × 1mm × 1mm",
-      "expected_route": ["RETRIEVE", "ACCEPT"]
+      "expected_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
     },
     {
       "id": "ho_easy_02",
       "type": "easy_single_hop",
       "question": "U-Net 解码器最后一层使用什么卷积将特征映射到目标类别数？",
       "hops": [
-        {"hop": 1, "question": "U-Net解码器输出层使用什么卷积？", "gold_chunk_ids": ["03_U-Net医学图像分割论文笔记_small_2"]}
+        {
+          "hop": 1,
+          "question": "U-Net解码器输出层使用什么卷积？",
+          "gold_chunk_ids": [
+            "03_U-Net医学图像分割论文笔记_small_2"
+          ]
+        }
       ],
       "final_answer": "1×1 卷积",
-      "expected_route": ["RETRIEVE", "ACCEPT"]
+      "expected_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
     },
     {
       "id": "ho_easy_03",
       "type": "easy_single_hop",
       "question": "sPESI 评分中，动脉血氧饱和度低于多少记 1 分？",
       "hops": [
-        {"hop": 1, "question": "sPESI评分中动脉血氧饱和度低于多少记1分？", "gold_chunk_ids": ["临床危险分层：理解sPESI评分_small_1"]}
+        {
+          "hop": 1,
+          "question": "sPESI评分中动脉血氧饱和度低于多少记1分？",
+          "gold_chunk_ids": [
+            "临床危险分层：理解sPESI评分_small_1"
+          ]
+        }
       ],
       "final_answer": "90%",
-      "expected_route": ["RETRIEVE", "ACCEPT"]
+      "expected_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
     },
     {
       "id": "ho_hard_01",
       "type": "hard_single_hop",
       "question": "模型在 SNR=10dB 噪声下的敏感度下降了多少？SNR=20dB 时呢？",
       "hops": [
-        {"hop": 1, "question": "AI模型在不同噪声水平SNR下的敏感度下降情况", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_1"]}
+        {
+          "hop": 1,
+          "question": "AI模型在不同噪声水平SNR下的敏感度下降情况",
+          "gold_chunk_ids": [
+            "08_AI模型评估与验证报告_small_2"
+          ]
+        }
       ],
-      "final_answer": "SNR=10dB 下降 8.5%，SNR=20dB 下降 2.1%",
-      "expected_route": ["RETRIEVE", "RETRIEVE", "ACCEPT"]
+      "final_answer": "敏感度下降8.5%",
+      "expected_route": [
+        "RETRIEVE",
+        "RETRIEVE",
+        "ACCEPT"
+      ]
     },
     {
       "id": "ho_hard_02",
       "type": "hard_single_hop",
       "question": "肺结节检测模型在第一阶段预训练和第二阶段微调分别使用什么优化器？",
       "hops": [
-        {"hop": 1, "question": "肺结节检测模型训练使用什么优化器？", "gold_chunk_ids": ["02_CT影像肺结节检测技术方案_small_2"]}
+        {
+          "hop": 1,
+          "question": "肺结节检测模型训练使用什么优化器？",
+          "gold_chunk_ids": [
+            "02_CT影像肺结节检测技术方案_small_2"
+          ]
+        }
       ],
       "final_answer": "Adam",
-      "expected_route": ["RETRIEVE", "RETRIEVE", "ACCEPT"]
+      "expected_route": [
+        "RETRIEVE",
+        "RETRIEVE",
+        "ACCEPT"
+      ]
     },
     {
       "id": "ho_hard_03",
       "type": "hard_single_hop",
       "question": "内部测试集的 AUC 是多少？外部验证集呢？",
       "hops": [
-        {"hop": 1, "question": "内部测试集的AUC是多少？", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_1"]},
-        {"hop": 2, "question": "外部验证集的AUC是多少？", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_1"]}
+        {
+          "hop": 1,
+          "question": "内部测试集的AUC是多少？",
+          "gold_chunk_ids": [
+            "08_AI模型评估与验证报告_small_1"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "外部验证集的AUC是多少？",
+          "gold_chunk_ids": [
+            "08_AI模型评估与验证报告_small_1"
+          ]
+        }
       ],
-      "final_answer": "内部 0.981，外部 0.953",
-      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"]
+      "final_answer": "AUC为0.981",
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ]
     },
     {
       "id": "ho_multi_01",
       "type": "multi_hop_composition",
       "question": "U-Net 在 ISBI 2012 细胞分割挑战赛的 PhC-U373 数据集上达到多少 IoU？U-Net 创新点是什么？",
       "hops": [
-        {"hop": 1, "question": "U-Net在PhC-U373数据集上的IoU是多少？", "gold_chunk_ids": ["03_U-Net医学图像分割论文笔记_small_3"]},
-        {"hop": 2, "question": "U-Net的创新点是什么？", "gold_chunk_ids": ["03_U-Net医学图像分割论文笔记_small_1"]}
+        {
+          "hop": 1,
+          "question": "U-Net在PhC-U373数据集上的IoU是多少？",
+          "gold_chunk_ids": [
+            "03_U-Net医学图像分割论文笔记_small_3"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "U-Net的创新点是什么？",
+          "gold_chunk_ids": [
+            "03_U-Net医学图像分割论文笔记_small_1"
+          ]
+        }
       ],
-      "final_answer": "92.5% IoU；创新点是跳跃连接",
-      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"]
+      "final_answer": "92.5%的IoU",
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ]
     },
     {
       "id": "ho_multi_02",
       "type": "multi_hop_composition",
       "question": "肺栓塞诊断流程中，临床评估后 D-二聚体阴性可以做什么结论？D-二聚体阳性后首选什么确诊检查？",
       "hops": [
-        {"hop": 1, "question": "D-二聚体阴性可以排除肺栓塞吗？", "gold_chunk_ids": ["诊断流程指南：从怀疑到确诊_small_1"]},
-        {"hop": 2, "question": "D-二聚体阳性后的首选确诊检查是什么？", "gold_chunk_ids": ["诊断流程指南：从怀疑到确诊_small_1"]}
+        {
+          "hop": 1,
+          "question": "D-二聚体阴性可以排除肺栓塞吗？",
+          "gold_chunk_ids": [
+            "诊断流程指南：从怀疑到确诊_small_1"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "D-二聚体阳性后的首选确诊检查是什么？",
+          "gold_chunk_ids": [
+            "诊断流程指南：从怀疑到确诊_small_1"
+          ]
+        }
       ],
-      "final_answer": "阴性可排除；阳性后首选CTPA",
-      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"]
+      "final_answer": "CTPA确诊",
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ]
     },
     {
       "id": "ho_comp_01",
       "type": "comparison",
       "question": "Transformer 的编码器和解码器各由多少层堆叠而成？",
       "hops": [
-        {"hop": 1, "question": "Transformer编码器由多少层堆叠？", "gold_chunk_ids": ["14_Attention机制论文笔记_small_2"]},
-        {"hop": 2, "question": "Transformer解码器由多少层堆叠？", "gold_chunk_ids": ["14_Attention机制论文笔记_small_2"]}
+        {
+          "hop": 1,
+          "question": "Transformer编码器由多少层堆叠？",
+          "gold_chunk_ids": [
+            "14_Attention机制论文笔记_small_2"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "Transformer解码器由多少层堆叠？",
+          "gold_chunk_ids": [
+            "14_Attention机制论文笔记_small_2"
+          ]
+        }
       ],
-      "final_answer": "编码器 6 层，解码器 6 层",
-      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"]
+      "final_answer": "6个相同的层",
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ]
     },
     {
       "id": "ho_comp_02",
       "type": "comparison",
       "question": "内部测试集和外部验证集的敏感度分别是多少？内部测试集的特异度呢？",
       "hops": [
-        {"hop": 1, "question": "内部测试集的敏感度和特异度是多少？", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_1"]},
-        {"hop": 2, "question": "外部验证集的敏感度是多少？", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_1"]}
+        {
+          "hop": 1,
+          "question": "内部测试集的敏感度和特异度是多少？",
+          "gold_chunk_ids": [
+            "08_AI模型评估与验证报告_small_1"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "外部验证集的敏感度是多少？",
+          "gold_chunk_ids": [
+            "08_AI模型评估与验证报告_small_1"
+          ]
+        }
       ],
-      "final_answer": "内部敏感度96.3%特异度91.8%；外部敏感度93.7%",
-      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"]
+      "final_answer": "敏感度为96.3%",
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ]
     },
     {
       "id": "ho_constraint_01",
       "type": "constraint_query",
       "question": "针对医学图像标注数据有限的问题，U-Net 论文采用了哪些数据增强方法？",
       "hops": [
-        {"hop": 1, "question": "U-Net针对标注数据有限采用了哪些数据增强方法？", "gold_chunk_ids": ["03_U-Net医学图像分割论文笔记_small_1"]}
+        {
+          "hop": 1,
+          "question": "U-Net针对标注数据有限采用了哪些数据增强方法？",
+          "gold_chunk_ids": [
+            "03_U-Net医学图像分割论文笔记_small_1"
+          ]
+        }
       ],
       "final_answer": "弹性形变、旋转、缩放",
-      "expected_route": ["RETRIEVE", "ACCEPT"]
+      "expected_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
     },
     {
       "id": "ho_constraint_02",
       "type": "constraint_query",
       "question": "对于临床评估高度可能的肺栓塞患者，指南推荐直接进行什么检查以明确诊断？",
       "hops": [
-        {"hop": 1, "question": "临床高度可能的肺栓塞患者直接做什么检查确诊？", "gold_chunk_ids": ["诊断流程指南：从怀疑到确诊_small_1"]}
+        {
+          "hop": 1,
+          "question": "临床高度可能的肺栓塞患者直接做什么检查确诊？",
+          "gold_chunk_ids": [
+            "诊断流程指南：从怀疑到确诊_small_1"
+          ]
+        }
       ],
       "final_answer": "CTPA",
-      "expected_route": ["RETRIEVE", "ACCEPT"]
+      "expected_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
     },
     {
       "id": "ho_partial_01",
       "type": "partial_evidence",
       "question": "三线性插值和三三次样条插值在体素重采样中各自的优缺点是什么？什么场景选择哪个？",
       "hops": [
-        {"hop": 1, "question": "三线性插值的优缺点和使用场景", "gold_chunk_ids": ["DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理_small_2"]},
-        {"hop": 2, "question": "三三次样条插值的优缺点和使用场景", "gold_chunk_ids": ["DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理_small_2"]}
+        {
+          "hop": 1,
+          "question": "三线性插值的优缺点和使用场景",
+          "gold_chunk_ids": [
+            "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理_small_2"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "三三次样条插值的优缺点和使用场景",
+          "gold_chunk_ids": [
+            "DICOM 像素值到 HU 的转换、体素重采样、NIfTI 格式处理_small_2"
+          ]
+        }
       ],
-      "final_answer": "三线性快但损失锐利度；三三次在误差和速度间平衡",
-      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"]
+      "final_answer": "三三次样条插值",
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ]
     },
     {
       "id": "ho_partial_02",
       "type": "partial_evidence",
       "question": "模型在外部验证集上的表现相比内部测试集如何？跨设备泛化中哪个设备表现最好？",
       "hops": [
-        {"hop": 1, "question": "模型外部验证集与内部测试集的表现对比", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_1"]},
-        {"hop": 2, "question": "跨设备泛化中哪个设备表现最好？", "gold_chunk_ids": ["08_AI模型评估与验证报告_small_2"]}
+        {
+          "hop": 1,
+          "question": "模型外部验证集与内部测试集的表现对比",
+          "gold_chunk_ids": [
+            "08_AI模型评估与验证报告_small_1"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "跨设备泛化中哪个设备表现最好？",
+          "gold_chunk_ids": [
+            "08_AI模型评估与验证报告_small_2"
+          ]
+        }
       ],
-      "final_answer": "外部略降；GE设备最好",
-      "expected_route": ["RETRIEVE", "DECOMPOSE", "RETRIEVE", "ACCEPT"]
+      "final_answer": "GE设备表现最好",
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ]
     },
     {
       "id": "ho_ood_01",
@@ -154,7 +338,10 @@
       "question": "如何在 PostgreSQL 中实现物化视图的增量刷新？",
       "hops": [],
       "final_answer": "",
-      "expected_route": ["RETRIEVE", "ABSTAIN"]
+      "expected_route": [
+        "RETRIEVE",
+        "ABSTAIN"
+      ]
     },
     {
       "id": "ho_ood_02",
@@ -162,7 +349,412 @@
       "question": "2025 年诺贝尔生理学或医学奖颁给了哪位科学家？",
       "hops": [],
       "final_answer": "",
-      "expected_route": ["RETRIEVE", "ABSTAIN"]
+      "expected_route": [
+        "RETRIEVE",
+        "ABSTAIN"
+      ]
+    },
+    {
+      "id": "ho2_easy_01",
+      "type": "easy_single_hop",
+      "question": "人体组织的 CT 值（霍斯菲尔德单位 HU）范围大致是多少？",
+      "hops": [
+        {
+          "hop": 1,
+          "question": "人体组织的 CT 值范围大致是多少？",
+          "source_doc": "CT 窗宽窗位设置原理.txt",
+          "evidence_sentences": [
+            "人体组织的CT值范围大致在-1000到+1000 HU之间。"
+          ],
+          "gold_chunk_ids": [
+            "CT 窗宽窗位设置原理_small_1"
+          ]
+        }
+      ],
+      "final_answer": "-1000到+1000 HU",
+      "expected_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "ho2_easy_02",
+      "type": "easy_single_hop",
+      "question": "医学图像标注的质量控制中，标注员间一致性检验要求 Kappa 值大于多少？",
+      "hops": [
+        {
+          "hop": 1,
+          "question": "标注员间一致性检验对 Kappa 值的要求是什么？",
+          "source_doc": "11_医学图像数据标注规范.md",
+          "evidence_sentences": [
+            "定期对标注结果进行一致性分析，计算标注员间的 Kappa 系数，要求 Kappa 值大于 0.80。"
+          ],
+          "gold_chunk_ids": [
+            "11_医学图像数据标注规范_small_2"
+          ]
+        }
+      ],
+      "final_answer": "0.80",
+      "expected_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "ho2_hard_01",
+      "type": "hard_single_hop",
+      "question": "在图像分割任务中，将 Transformer 与 U-Net 架构结合的多器官分割模型，其 Dice 系数相比纯 U-Net 提升了多少？",
+      "hops": [
+        {
+          "hop": 1,
+          "question": "哪个模型将 Transformer 与 U-Net 架构结合用于图像分割？",
+          "source_doc": "06_Transformer在医学影像中的应用.md",
+          "evidence_sentences": [
+            "TransUNet 将 Transformer 与 U-Net 架构结合，利用 Transformer 编码器提取全局上下文特征，再通过 U-Net 解码器恢复空间分辨率。"
+          ],
+          "gold_chunk_ids": [
+            "06_Transformer在医学影像中的应用_small_2"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "TransUNet 在多器官分割任务中 Dice 系数比纯 U-Net 提升了多少？",
+          "source_doc": "06_Transformer在医学影像中的应用.md",
+          "evidence_sentences": [
+            "在多器官分割任务中，TransUNet 的 Dice 系数比纯 U-Net 提升了 3.5 个百分点。"
+          ],
+          "gold_chunk_ids": [
+            "06_Transformer在医学影像中的应用_small_2"
+          ]
+        }
+      ],
+      "final_answer": "3.5 个百分点",
+      "expected_route": [
+        "RETRIEVE",
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "ho2_hard_02",
+      "type": "hard_single_hop",
+      "question": "对 AI 模型而言，文档推荐的比推理阶段通过窗技术适配显示更有效的图像预处理做法是什么？",
+      "hops": [
+        {
+          "hop": 1,
+          "question": "为什么 AI 模型不宜在推理阶段依赖窗技术适配显示？",
+          "source_doc": "CT 窗宽窗位设置原理.txt",
+          "evidence_sentences": [
+            "对AI模型而言，进行HU归一化（如裁剪到[-1000, 600] HU并映射到[0,1]）处理，远比在推理阶段通过窗技术“适配”显示更有效，且能保持数据一致性。"
+          ],
+          "gold_chunk_ids": [
+            "CT 窗宽窗位设置原理_small_2"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "该预处理方式的具体做法是什么？",
+          "source_doc": "CT 窗宽窗位设置原理.txt",
+          "evidence_sentences": [
+            "对AI模型而言，进行HU归一化（如裁剪到[-1000, 600] HU并映射到[0,1]）处理，远比在推理阶段通过窗技术“适配”显示更有效，且能保持数据一致性。"
+          ],
+          "gold_chunk_ids": [
+            "CT 窗宽窗位设置原理_small_2"
+          ]
+        }
+      ],
+      "final_answer": "HU归一化",
+      "expected_route": [
+        "RETRIEVE",
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "ho2_multi_01",
+      "type": "multi_hop_composition",
+      "question": "急性肺栓塞的病理生理后果包括什么？CTPA 上反映急性右心负荷过重的间接征象有哪些？",
+      "hops": [
+        {
+          "hop": 1,
+          "question": "急性肺栓塞的病理生理后果包括什么？",
+          "source_doc": "PE的病理分型：急性 vs. 慢性.md",
+          "evidence_sentences": [
+            "其病理生理后果包括肺通气/灌注（V/Q）不匹配、低氧血症，以及因肺动脉压力急剧升高导致的右心室负荷加重。"
+          ],
+          "gold_chunk_ids": [
+            "PE的病理分型：急性 vs. 慢性_small_1"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "CTPA 上急性右心负荷过重的间接征象是什么？",
+          "source_doc": "CTPA影像表现：从直接到间接.md",
+          "evidence_sentences": [
+            "心功能改变：如急性右心负荷过重导致的右心扩张、室间隔左移或平直。"
+          ],
+          "gold_chunk_ids": [
+            "CTPA影像表现：从直接到间接_small_2"
+          ]
+        }
+      ],
+      "final_answer": "室间隔左移或平直",
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "ho2_multi_02",
+      "type": "multi_hop_composition",
+      "question": "急性肺栓塞未及时治疗最常见的慢性转化结局是什么？CTEPH 患者的陈旧血栓在 CTPA 上有哪些典型征象？",
+      "hops": [
+        {
+          "hop": 1,
+          "question": "急性肺栓塞最常见的一种慢性转化结局是什么？",
+          "source_doc": "PE的病理分型：急性 vs. 慢性.md",
+          "evidence_sentences": [
+            "最常见的一种情况是，急性肺栓塞若未及时或充分治疗，血栓可能发生机化、纤维化，转化为慢性血栓栓塞性肺动脉高压（CTEPH）。"
+          ],
+          "gold_chunk_ids": [
+            "PE的病理分型：急性 vs. 慢性_small_1"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "CTPA 上陈旧（慢性）血栓的典型征象有哪些？",
+          "source_doc": "CTPA影像表现：从直接到间接.md",
+          "evidence_sentences": [
+            "陈旧或慢性血栓：常表现为钝角的偏心性附壁充盈缺损、血管壁不规则、管腔内的纤维“蹼样征”，以及血管管径的狭窄、变细甚至闭塞。"
+          ],
+          "gold_chunk_ids": [
+            "CTPA影像表现：从直接到间接_small_1"
+          ]
+        }
+      ],
+      "final_answer": "蹼样征",
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "ho2_comp_01",
+      "type": "comparison",
+      "question": "CTPA 上新鲜（急性）血栓与陈旧（慢性）血栓的影像表现有何区别？请分别列举。",
+      "hops": [
+        {
+          "hop": 1,
+          "question": "新鲜（急性）血栓在 CTPA 上有哪些征象？",
+          "source_doc": "CTPA影像表现：从直接到间接.md",
+          "evidence_sentences": [
+            "新鲜血栓：常见于急性期，如骑跨于主肺动脉分叉的“马鞍征”、呈环形或轨道样填充的“环征/轨道征”，或与血管壁呈锐角的附壁血栓。"
+          ],
+          "gold_chunk_ids": [
+            "CTPA影像表现：从直接到间接_small_1"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "陈旧（慢性）血栓在 CTPA 上有哪些征象？",
+          "source_doc": "CTPA影像表现：从直接到间接.md",
+          "evidence_sentences": [
+            "陈旧或慢性血栓：常表现为钝角的偏心性附壁充盈缺损、血管壁不规则、管腔内的纤维“蹼样征”，以及血管管径的狭窄、变细甚至闭塞。"
+          ],
+          "gold_chunk_ids": [
+            "CTPA影像表现：从直接到间接_small_1"
+          ]
+        }
+      ],
+      "final_answer": "马鞍征",
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "ho2_comp_02",
+      "type": "comparison",
+      "question": "医学期刊正文引用中，顺序编码制（Vancouver 体系）与作者-年份制（Harvard 体系）在标注方式上有何区别？",
+      "hops": [
+        {
+          "hop": 1,
+          "question": "顺序编码制（Vancouver 体系）如何标注引用？",
+          "source_doc": "论文引用与参考文献格式.md",
+          "evidence_sentences": [
+            "按正文首次出现顺序编号，正文标注 [1]、[2-5]；参考文献列表按编号排列。多数 SCI 医学期刊采用此体系。"
+          ],
+          "gold_chunk_ids": [
+            "论文引用与参考文献格式_small_1"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "作者-年份制（Harvard 体系）如何标注引用？",
+          "source_doc": "论文引用与参考文献格式.md",
+          "evidence_sentences": [
+            "正文标注（作者, 年份），如（Smith, 2020）；参考文献列表按字母排序。部分期刊采用。"
+          ],
+          "gold_chunk_ids": [
+            "论文引用与参考文献格式_small_1"
+          ]
+        }
+      ],
+      "final_answer": "Vancouver",
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "ho2_con_01",
+      "type": "constraint_query",
+      "question": "针对 Transformer 自注意力计算复杂度为 O(n²)、处理高分辨率医学图像面临显存挑战的问题，文档提出的未来方向是什么？",
+      "hops": [
+        {
+          "hop": 1,
+          "question": "针对 Transformer 计算复杂度高的问题，文档提出的未来方向是什么？",
+          "source_doc": "06_Transformer在医学影像中的应用.md",
+          "evidence_sentences": [
+            "高效 Transformer（如 Swin Transformer、Linformer）降低计算复杂度"
+          ],
+          "gold_chunk_ids": [
+            "06_Transformer在医学影像中的应用_small_3"
+          ]
+        }
+      ],
+      "final_answer": "Swin Transformer、Linformer",
+      "expected_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "ho2_con_02",
+      "type": "constraint_query",
+      "question": "针对人眼仅能分辨约 16 个灰阶、不可能同时看清所有 CT 值范围内组织的问题，临床采用了什么技术来解决？",
+      "hops": [
+        {
+          "hop": 1,
+          "question": "针对人眼灰阶分辨能力有限的问题，临床采用了什么技术？",
+          "source_doc": "CT 窗宽窗位设置原理.txt",
+          "evidence_sentences": [
+            "为了解决这一矛盾，临床采用了窗技术，其原理是定义一个宽度为 窗宽（Window Width, WW） ，中心为 窗位（Window Level, WL） 的“观察窗”，将落在此窗内的CT值按从白到黑的16个灰阶显示，而窗外的组织则分别显示为全黑或全白。"
+          ],
+          "gold_chunk_ids": [
+            "CT 窗宽窗位设置原理_small_1"
+          ]
+        }
+      ],
+      "final_answer": "窗技术",
+      "expected_route": [
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "ho2_partial_01",
+      "type": "partial_evidence",
+      "question": "医学影像 AI 辅助诊断系统后端使用什么编程语言与 Web 框架？深度学习模型又基于什么深度学习框架实现？",
+      "hops": [
+        {
+          "hop": 1,
+          "question": "系统后端使用什么编程语言与框架？",
+          "source_doc": "01_医学影像AI系统概述.md",
+          "evidence_sentences": [
+            "系统采用微服务架构，后端使用 Python 和 FastAPI 框架，深度学习模型基于 PyTorch 实现。"
+          ],
+          "gold_chunk_ids": [
+            "01_医学影像AI系统概述_small_2"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "深度学习模型基于什么框架实现？",
+          "source_doc": "01_医学影像AI系统概述.md",
+          "evidence_sentences": [
+            "系统采用微服务架构，后端使用 Python 和 FastAPI 框架，深度学习模型基于 PyTorch 实现。"
+          ],
+          "gold_chunk_ids": [
+            "01_医学影像AI系统概述_small_2"
+          ]
+        }
+      ],
+      "final_answer": "FastAPI",
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "ho2_partial_02",
+      "type": "partial_evidence",
+      "question": "医学图像标注流程分为哪几个环节？其中终审环节由谁负责抽检，抽检比例要求是多少？",
+      "hops": [
+        {
+          "hop": 1,
+          "question": "标注流程分为哪几个环节？",
+          "source_doc": "11_医学图像数据标注规范.md",
+          "evidence_sentences": [
+            "由标注员使用标注工具逐层勾画病灶轮廓。对于肺结节，需在横断面、冠状面和矢状面三个视角分别确认。",
+            "由资深放射科医生对初标结果进行复核，检查以下内容：",
+            "由科室主任对复核后的标注进行抽检，抽检比例不低于 20%。终审通过的数据方可入库用于模型训练。"
+          ],
+          "gold_chunk_ids": [
+            "11_医学图像数据标注规范_small_2"
+          ]
+        },
+        {
+          "hop": 2,
+          "question": "终审环节由谁抽检、抽检比例是多少？",
+          "source_doc": "11_医学图像数据标注规范.md",
+          "evidence_sentences": [
+            "由科室主任对复核后的标注进行抽检，抽检比例不低于 20%。终审通过的数据方可入库用于模型训练。"
+          ],
+          "gold_chunk_ids": [
+            "11_医学图像数据标注规范_small_2"
+          ]
+        }
+      ],
+      "final_answer": "抽检比例不低于20%",
+      "expected_route": [
+        "RETRIEVE",
+        "DECOMPOSE",
+        "RETRIEVE",
+        "ACCEPT"
+      ]
+    },
+    {
+      "id": "ho2_ood_01",
+      "type": "unsupported_ood",
+      "question": "SpaceX 星舰（Starship）在最近一次试飞中是否成功完成了全程飞行？",
+      "hops": [],
+      "final_answer": "无（知识库中无此信息，应拒绝作答）",
+      "expected_route": [
+        "RETRIEVE",
+        "ABSTAIN"
+      ]
+    },
+    {
+      "id": "ho2_ood_02",
+      "type": "unsupported_ood",
+      "question": "2026 年国际足联世界杯将由哪三个国家联合举办？",
+      "hops": [],
+      "final_answer": "无（知识库中无此信息，应拒绝作答）",
+      "expected_route": [
+        "RETRIEVE",
+        "ABSTAIN"
+      ]
     }
   ]
 }

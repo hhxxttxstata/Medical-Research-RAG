@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic RAG Demo — LangGraph Runtime</title>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --border:#262b36; --text:#e6e8ee; --muted:#8b93a3; --accent:#4f8cff; --green:#3fb96b; --red:#e05a5a; --yellow:#d9a23b; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:"Segoe UI",system-ui,sans-serif; padding:32px 16px; }
+  .wrap { max-width:860px; margin:0 auto; }
+  h1 { font-size:20px; font-weight:600; margin-bottom:4px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
+  .box { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:14px; }
+  .row { display:flex; gap:10px; }
+  input { flex:1; background:#0d0f13; border:1px solid var(--border); color:var(--text); border-radius:8px; padding:10px 14px; font-size:14px; outline:none; }
+  input:focus { border-color:var(--accent); }
+  button { background:var(--accent); color:#fff; border:none; border-radius:8px; padding:10px 22px; font-size:14px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:wait; }
+  .examples { margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; }
+  .examples span { font-size:12px; color:var(--muted); cursor:pointer; border:1px dashed var(--border); border-radius:20px; padding:4px 12px; }
+  .examples span:hover { color:var(--accent); border-color:var(--accent); }
+  .meta { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+  .badge { font-size:12px; font-weight:600; padding:3px 10px; border-radius:20px; }
+  .ok { background:rgba(63,185,107,.15); color:var(--green); border:1px solid rgba(63,185,107,.4); }
+  .abstain { background:rgba(224,90,90,.15); color:var(--red); border:1px solid rgba(224,90,90,.4); }
+  .chip { background:#0d0f13; border:1px solid var(--border); border-radius:6px; padding:2px 8px; font-size:12px; color:var(--muted); }
+  .answer { font-size:15px; line-height:1.7; white-space:pre-wrap; }
+  .route { font-family:ui-monospace,monospace; font-size:13px; color:var(--yellow); }
+  .ev { border-top:1px solid var(--border); padding:10px 0; }
+  .ev:first-child { border-top:none; }
+  .ev .fn { font-size:13px; font-weight:600; color:var(--accent); }
+  .ev .sc { float:right; font-size:12px; color:var(--muted); }
+  .ev .tx { font-size:12.5px; color:var(--muted); margin-top:4px; line-height:1.5; }
+  .err { color:var(--red); font-size:13px; }
+  .foot { color:var(--muted); font-size:12px; margin-top:18px; text-align:center; }
+  pre { white-space:pre-wrap; word-break:break-all; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🩺 Agentic RAG Demo — LangGraph Runtime</h1>
+  <div class="sub">POST /query → LangGraph Agentic RAG（v2，Step 16 parity 18/18）→ 结构化响应</div>
+
+  <div class="box">
+    <div class="row">
+      <input id="q" placeholder="输入医学问题，例如：肺栓塞CTPA的直接征象有哪些？" onkeydown="if(event.key==='Enter')run()">
+      <button id="btn" onclick="run()">查询</button>
+    </div>
+    <div class="examples">
+      <span onclick="pick(this)">肺栓塞CTPA的直接征象有哪些？</span>
+      <span onclick="pick(this)">急性肺栓塞和慢性肺栓塞的CT表现有什么区别？</span>
+      <span onclick="pick(this)">sPESI评分包含哪些评估项目？</span>
+      <span onclick="pick(this)">2025年全球经济增长率是多少？（OOD 拒答测试）</span>
+    </div>
+  </div>
+
+  <div id="status" class="box" style="display:none; color:var(--muted); font-size:13px;">⏳ 首次调用需加载模型（10-20s），请稍候…</div>
+
+  <div id="result" style="display:none;">
+    <div class="box">
+      <div class="meta">
+        <span id="status_badge" class="badge ok">ACCEPT</span>
+        <span class="chip">route: <span id="route" class="route"></span></span>
+        <span class="chip">iterations: <span id="iterations"></span></span>
+        <span class="chip">grader_called: <span id="grader"></span></span>
+        <span class="chip">latency: <span id="latency"></span> ms</span>
+      </div>
+      <div id="abstain_reason" class="err" style="display:none; margin-bottom:8px;"></div>
+      <div id="answer" class="answer"></div>
+    </div>
+    <div class="box">
+      <div style="font-size:13px; font-weight:600; margin-bottom:6px; color:var(--muted);">📚 final_evidence（<span id="ev_count"></span>）</div>
+      <div id="evidence"></div>
+    </div>
+  </div>
+
+  <div class="foot">研究链（Benchmark → Ablation → Holdout）证明 Agentic capability；本页证明架构可作为 runtime 被调用。</div>
+</div>
+
+<script>
+const API = "http://localhost:8000/query";
+function pick(el) { document.getElementById("q").value = el.textContent; run(); }
+
+async function run() {
+  const q = document.getElementById("q").value.trim();
+  if (!q) return;
+  const btn = document.getElementById("btn");
+  btn.disabled = true;
+  document.getElementById("status").style.display = "block";
+  document.getElementById("result").style.display = "none";
+  try {
+    const res = await fetch(API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: q }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    const d = await res.json();
+    render(d);
+  } catch (e) {
+    document.getElementById("status").style.display = "none";
+    const box = document.getElementById("result");
+    box.style.display = "block";
+    document.getElementById("answer").innerHTML = `<div class="err">❌ ${e.message}</div>`;
+    document.getElementById("evidence").innerHTML = "";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function render(d) {
+  document.getElementById("status").style.display = "none";
+  const r = document.getElementById("result");
+  r.style.display = "block";
+
+  const badge = document.getElementById("status_badge");
+  badge.textContent = d.status;
+  badge.className = "badge " + (d.status === "ACCEPT" ? "ok" : "abstain");
+
+  document.getElementById("route").textContent = (d.route || []).join(" → ");
+  document.getElementById("iterations").textContent = d.iterations ?? "-";
+  document.getElementById("grader").textContent = d.grader_called;
+  document.getElementById("latency").textContent = d.latency_ms ?? "-";
+  document.getElementById("answer").textContent = d.answer || "(空)";
+
+  const ar = document.getElementById("abstain_reason");
+  if (d.status === "ABSTAIN" && d.abstain_reason) {
+    ar.style.display = "block";
+    ar.textContent = "🚫 拒答原因：" + d.abstain_reason;
+  } else {
+    ar.style.display = "none";
+  }
+
+  const ev = document.getElementById("evidence");
+  ev.innerHTML = "";
+  document.getElementById("ev_count").textContent = (d.evidence || []).length;
+  (d.evidence || []).forEach((s) => {
+    const div = document.createElement("div");
+    div.className = "ev";
+    div.innerHTML =
+      `<span class="sc">score ${s.score}</span><div class="fn">${esc(s.filename)}</div>` +
+      `<div class="tx">${esc(s.text)}</div>`;
+    ev.appendChild(div);
+  });
+}
+function esc(s) { const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
+</script>
+</body>
+</html>
