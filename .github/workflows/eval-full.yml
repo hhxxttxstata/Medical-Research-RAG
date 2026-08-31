@@ -1,4 +1,4 @@
-name: Eval Full（手动验收：qualify --full + regression）
+name: Eval Full（手动/夜间全量验收：qualify --full 含 safety + regression）
 
 on:
   workflow_dispatch:
@@ -7,9 +7,14 @@ on:
         description: "qualify --full 通过后是否继续跑 regression 对比基线"
         type: boolean
         default: true
+  schedule:
+    # 夜间全量回归（P0-6）：UTC 22:00 = 北京时间每日 06:00，跑在 main 最新提交上。
+    # 夜间失败不阻塞任何 PR，仅留报告供晋升核对与漂移监控。
+    - cron: "0 22 * * *"
 
-# issue #4 ⑤⑥⑦：晋升前一键验收。需重建索引（Milvus Lite）+ DeepSeek API，
-# 串行独占约 40-90 分钟。任何 Exit Criteria 不达标或指标降级 → FAIL。
+# issue #4 ⑤⑥⑦ + handoff v2 P0-6：晋升前一键验收与夜间漂移监控。
+# 需重建索引（Milvus Lite）+ DeepSeek API，串行独占约 40-90 分钟。
+# 任何 Exit Criteria / safety gate 不达标或指标降级 → FAIL。
 jobs:
   eval-full:
     runs-on: ubuntu-latest
@@ -47,11 +52,12 @@ jobs:
       - name: 重建索引（Milvus Lite）
         run: python scripts/rebuild_index.py
 
-      - name: Qualify --full（6 条 Exit Criteria）
+      - name: Qualify --full（Exit Criteria + safety 门禁）
         run: python scripts/qualify.py --full
 
+      # schedule 触发时无 inputs（恒跑）；手动触发按开关决定
       - name: Regression（对比基线，指标降级即 FAIL）
-        if: ${{ inputs.run_regression }}
+        if: github.event_name == 'schedule' || inputs.run_regression
         run: python scripts/regression.py
 
       - name: 上传评测报告
