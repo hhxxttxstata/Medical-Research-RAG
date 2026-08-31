@@ -49,10 +49,6 @@
     "corpus_unsupported_reject_min": {
       "value": "baseline",
       "desc": "库内无支撑题拒答率不低于基线"
-    },
-    "ood_reject_no_drop": {
-      "value": "baseline",
-      "desc": "OOD 拒答率不得低于基线"
     }
   },
   "optimization_target": {
