@@ -57,6 +57,10 @@ DISPLAY_TO_FIELD = {
     "retry_recovery": "Retry Recovery",
     "unnecessary_action_rate": "Unnecessary Action",
     "avg_iterations": "Avg Iterations",
+    "required_action_recall": "Required Action Recall",
+    "forbidden_action_rate": "Forbidden Action",
+    "false_accept_rate": "False Accept",
+    "premature_accept_rate": "Premature Accept",
 }
 
 
