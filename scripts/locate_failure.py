@@ -25,6 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from eval.failure_taxonomy import suggest_for_surface  # noqa: E402
 from eval.rescue_metrics import policy_action_accuracy  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -40,7 +41,7 @@ def classify(detail: dict, case_item: dict) -> dict:
 
     detail: 报告 details[agent] 中的逐题记录
     case_item: benchmark 题目元数据（含 expected_route / hops）
-    返回: {"surfaces": [...按优先级...], "summary": str}
+    返回: {"surfaces": [...按优先级...], "suggested_taxonomy": [...建议根因码...], "summary": str}
     """
     surfaces: list[str] = []
     notes: list[str] = []
@@ -65,7 +66,7 @@ def classify(detail: dict, case_item: dict) -> dict:
     # ③④ retrieval / generation：仅对实际作答的题有意义
     # （正确拒答的 OOD 题 gold 本就不存在，ER=0 是正常现象，不算失败面）
     if abstained:
-        return {"surfaces": surfaces, "summary": "；".join(notes) or "正确拒答，无失败面"}
+        return _result(surfaces, notes)
 
     er = float(detail.get("v1_evidence_recall", 1.0))
     n_hops = len(case_item.get("hops") or [])
@@ -78,7 +79,16 @@ def classify(detail: dict, case_item: dict) -> dict:
         surfaces.append("generation")
         notes.append("证据已齐（Recall=1.0）但 Final Answer Acc=false")
 
-    return {"surfaces": surfaces, "summary": "；".join(notes) or "无失败面（本题通过）"}
+    return _result(surfaces, notes)
+
+
+def _result(surfaces: list[str], notes: list[str]) -> dict:
+    """统一组装 classify 结果（主失败面 → 建议根因码，供 ③根因 参考）"""
+    return {
+        "surfaces": surfaces,
+        "suggested_taxonomy": suggest_for_surface(surfaces[0]) if surfaces else [],
+        "summary": "；".join(notes) or "无失败面（本题通过）",
+    }
 
 
 def locate(case_ids: list[str], report_path: Path) -> dict[str, dict]:
@@ -116,6 +126,7 @@ def write_localize(case_ids: list[str], results: dict[str, dict]) -> int:
             case["localize"] = {
                 "surface": r["surfaces"][0],
                 "all_surfaces": r["surfaces"],
+                "suggested_taxonomy": r.get("suggested_taxonomy", []),
                 "detail": r["summary"],
             }
             updated += 1
@@ -135,6 +146,8 @@ def main() -> int:
     print(f"📄 报告: {report_path}")
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
+    if "cases" not in report:
+        raise SystemExit(f"❌ 报告 {report_path.name} 缺 cases 字段（旧格式，无逐题元数据），请改用含 cases 的新报告")
     items = {b["question"]["id"]: b["question"] for b in report["cases"]}
     if args.case:
         case_ids = args.case
@@ -146,7 +159,8 @@ def main() -> int:
 
     results = locate(case_ids, report_path)
     for cid, r in results.items():
-        print(f"  {cid:>24}: {','.join(r['surfaces']) or '-'} | {r['summary']}")
+        sugg = ",".join(r.get("suggested_taxonomy", [])[:3]) or "-"
+        print(f"  {cid:>24}: {','.join(r['surfaces']) or '-'} | 建议码: {sugg} | {r['summary']}")
 
     if args.dry_run:
         print("（dry-run，未写回）")

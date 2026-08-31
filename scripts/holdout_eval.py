@@ -47,7 +47,61 @@ METRIC_KEYS = [
     ("Retry Recovery", "retry_recovery"),
     ("Unnecessary Action", "unnecessary_action_rate"),
     ("Avg Iterations", "avg_iterations"),
+    ("Required Action Recall", "required_action_recall"),
+    ("Forbidden Action", "forbidden_action_rate"),
+    ("False Accept", "false_accept_rate"),
+    ("Premature Accept", "premature_accept_rate"),
 ]
+
+
+def _is_op_fail(case: dict) -> bool:
+    """答案文本级 operational failure（生成阶段失败的占位文案）"""
+    ans = str(case.get("v21_answer", ""))
+    return "[OPERATIONAL_ERROR]" in ans or "系统错误" in ans
+
+
+def _pct(sorted_vals: list, p: float):
+    """已排序序列的百分位（最近邻取值，与 numpy percentile 默认口径一致量级）"""
+    if not sorted_vals:
+        return 0
+    return sorted_vals[min(len(sorted_vals) - 1, round(p * (len(sorted_vals) - 1)))]
+
+
+def summarize_reliability(cases: list[dict]) -> dict:
+    """Reliability/Cost 汇总（P0-4）：数据全部来自每题 observation，纯聚合不改采集。
+
+    Operational failure（observation 级）与 malformed output（答案文本级：
+    空答案或 OPERATIONAL_ERROR 占位）分开统计，均不与答错混算。
+    """
+    obs_list = [c.get("v21_observation") or {} for c in cases]
+    if not any(obs_list):
+        return {}
+    n = len(obs_list)
+    lats = sorted(o.get("latency_ms", 0) for o in obs_list)
+
+    def per_query(key: str) -> float:
+        return round(sum(o.get(key, 0) for o in obs_list) / n, 3)
+
+    op_fail = sum(1 for c in cases if _is_op_fail(c))
+    malformed = sum(1 for c in cases if not str(c.get("v21_answer", "")).strip() or _is_op_fail(c))
+    return {
+        "n": n,
+        "latency_ms": {
+            "p50": _pct(lats, 0.50),
+            "p95": _pct(lats, 0.95),
+            "max": lats[-1],
+            "avg": round(sum(lats) / n, 1),
+        },
+        "grader_calls_per_query": per_query("grader_calls"),
+        "policy_llm_calls_per_query": per_query("policy_llm_calls"),
+        "generation_calls_per_query": per_query("generation_calls"),
+        "retrieval_calls_per_query": per_query("retrieval_calls"),
+        "fallback_count": sum(1 for o in obs_list if o.get("fallback_used")),
+        "timeout_count": sum(1 for o in obs_list if o.get("operational_error") == "timeout"),
+        "api_error_count": sum(1 for o in obs_list if o.get("operational_error") == "api_error"),
+        "operational_failure_rate": f"{op_fail}/{n}",
+        "malformed_output_rate": f"{malformed}/{n}",
+    }
 
 
 class _CachedReranker:
@@ -256,23 +310,157 @@ def main():
                 flush=True,
             )
 
-    # ── Operational Failure（单独统计）──
+    # ── Operational Failure（单独统计，不与答错混算）──
     if "v21" in agents:
-        op_fail = sum(1 for c in cases if "[OPERATIONAL_ERROR]" in c["v21_answer"] or "系统错误" in c["v21_answer"])
+        op_fail = sum(1 for c in cases if _is_op_fail(c))
         print("\n  ── Operational ──")
         print(f"  v2.1 Operational Failure = {op_fail}/{len(cases)}")
         for c in cases:
-            if "[OPERATIONAL_ERROR]" in c["v21_answer"] or "系统错误" in c["v21_answer"]:
+            if _is_op_fail(c):
                 print(f"    ⚠️  {c['question']['id']}: {c['v21_answer'][:60]}")
 
-    out = OUT_DIR / f"holdout30_{TIMESTAMP}.json"
+    # ── Reliability/Cost 汇总 + Config snapshot（P0-3/P0-4）──
+    reliability = summarize_reliability(cases) if "v21" in agents else {}
+    if reliability:
+        lat = reliability["latency_ms"]
+        print("\n  ── Reliability / Cost ──")
+        print(
+            f"  latency ms avg/p50/p95/max = {lat['avg']}/{lat['p50']}/{lat['p95']}/{lat['max']} | "
+            f"grader calls/query = {reliability['grader_calls_per_query']} | "
+            f"timeout = {reliability['timeout_count']} | fallback = {reliability['fallback_count']}"
+        )
+        print(
+            f"  operational_failure = {reliability['operational_failure_rate']} | "
+            f"malformed_output = {reliability['malformed_output_rate']}"
+        )
+
+    from eval.config_snapshot import build_config_snapshot
+
+    snapshot = build_config_snapshot(
+        dataset_files=[args.bench],
+        top_k=TOP_K,
+        fetch_k=FETCH_K,
+        bench=args.bench,
+        extra={"agents": agents},
+    )
+
+    # ── 附带产物：cost / trajectories / failures（P0-4/P0-5）──
+    report_name = f"holdout30_{TIMESTAMP}.json"
+    cost_out = OUT_DIR / f"cost_{TIMESTAMP}.json"
+    cost_out.write_text(
+        json.dumps(
+            {
+                "timestamp": TIMESTAMP,
+                "report": report_name,
+                "reliability": reliability,
+                "per_case": [
+                    {
+                        "id": c["question"]["id"],
+                        **{
+                            k: (c.get("v21_observation") or {}).get(k)
+                            for k in (
+                                "latency_ms",
+                                "grader_calls",
+                                "policy_llm_calls",
+                                "generation_calls",
+                                "retrieval_calls",
+                                "fallback_used",
+                                "operational_error",
+                            )
+                        },
+                    }
+                    for c in cases
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    from eval.rescue_metrics import policy_action_accuracy as _policy_ok
+
+    traj_out = OUT_DIR / f"trajectories_{TIMESTAMP}.jsonl"
+    with open(traj_out, "w", encoding="utf-8") as f:
+        for agent, m in metrics.items():
+            for d in m.get("details", []):
+                f.write(
+                    json.dumps(
+                        {
+                            "agent": agent,
+                            "id": d["id"],
+                            "type": d["type"],
+                            "route": d["route"],
+                            "expected_route": d.get("expected_route", []),
+                            "trajectory_mode": d.get("trajectory_mode"),
+                            "abstained": d["abstained"],
+                            "policy_ok": _policy_ok(d["route"], d.get("expected_route", [])),
+                            "required_action_recall": d.get("required_action_recall"),
+                            "forbidden_violation": d.get("forbidden_violation"),
+                            "false_accept": d.get("false_accept"),
+                            "premature_accept": d.get("premature_accept"),
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+
+    fail_out = OUT_DIR / f"failures_{TIMESTAMP}.jsonl"
+    case_by_id = {c["question"]["id"]: c for c in cases}
+    with open(fail_out, "w", encoding="utf-8") as f:
+        for agent, m in metrics.items():
+            for d in m.get("details", []):
+                fails = []
+                if d["type"] == "unsupported_ood":
+                    if not d["abstained"]:
+                        fails.append("ood_not_rejected")
+                else:
+                    if not d["final_answer_accuracy"]:
+                        fails.append("final_answer_wrong")
+                    if d["abstained"]:
+                        fails.append("false_abstain")
+                if not _policy_ok(d["route"], d.get("expected_route", [])):
+                    fails.append("policy_mismatch")
+                if d.get("forbidden_violation"):
+                    fails.append("forbidden_action")
+                if d.get("false_accept"):
+                    fails.append("false_accept")
+                if d.get("premature_accept"):
+                    fails.append("premature_accept")
+                rar = d.get("required_action_recall")
+                if rar is not None and rar < 1.0:
+                    fails.append("missing_required_action")
+                if not fails:
+                    continue
+                c = case_by_id.get(d["id"], {})
+                f.write(
+                    json.dumps(
+                        {
+                            "agent": agent,
+                            "id": d["id"],
+                            "type": d["type"],
+                            "question": d["question"],
+                            "failures": fails,
+                            "route": d["route"],
+                            "v1_hit": d["v1_hit"],
+                            "class": d["class"],
+                            "answer": str(c.get(f"{agent}_answer", ""))[:300],
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+
+    out = OUT_DIR / report_name
     with open(out, "w", encoding="utf-8") as f:
         json.dump(
             {
                 "timestamp": TIMESTAMP,
                 "agents": agents,
                 "note": "Holdout 30 题验收。do NOT tune on these cases.",
+                "config_snapshot": snapshot,
                 "metrics": {name: _fmt(m) for name, m in metrics.items()},
+                "reliability": reliability,
                 "details": {name: m["details"] for name, m in metrics.items()},
                 "cases": cases,  # 含原始答案（诊断用）
                 "elapsed": round(elapsed, 1),
@@ -282,6 +470,7 @@ def main():
             indent=2,
         )
     print(f"\n  📄 报告: {out} (耗时 {elapsed:.0f}s)")
+    print(f"  📄 附带: {cost_out.name} / {traj_out.name} / {fail_out.name}")
 
 
 if __name__ == "__main__":

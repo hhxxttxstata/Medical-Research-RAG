@@ -6,6 +6,8 @@
   - status 限于五态流转，非 closed 的 case 不得晋升（qualify/regression 门禁兜底）
   - closed 是终态：必须写清 root_cause / fix / verification（可追溯）
   - localize（②定位产物，由 scripts/locate_failure.py 写入）若存在，surface 须合法
+  - taxonomy（P1-2，可选）：根因码数组，取值于 eval/failure_taxonomy.py 词表
+  - review_needed（P1-5，可选）：true = 挂人工 review 队列，audit 输出提醒清单
 
 用法:
     python scripts/audit_bad_cases.py                # 默认校验 tests/bad_cases.json
@@ -19,6 +21,10 @@ import json
 import re
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from eval.failure_taxonomy import TAXONOMY  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PATH = ROOT / "tests" / "bad_cases.json"
@@ -35,20 +41,21 @@ CLOSED_REQUIRED = ("root_cause", "fix", "verification")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def audit(path: Path) -> list[str]:
-    """返回违规清单；空列表 = 全部合规。纯函数，便于单元测试。"""
+def audit_full(path: Path) -> tuple[list[str], list[str]]:
+    """返回 (违规清单, review 队列清单)；空违规列表 = 全部合规。纯函数，便于单元测试。"""
     violations: list[str] = []
+    review_queue: list[str] = []
 
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return [f"文件不存在: {path}"]
+        return [f"文件不存在: {path}"], []
     except json.JSONDecodeError as e:
-        return [f"JSON 解析失败: {e}"]
+        return [f"JSON 解析失败: {e}"], []
 
     cases = data.get("bad_cases")
     if not isinstance(cases, list):
-        return ["顶层缺少 bad_cases 数组"]
+        return ["顶层缺少 bad_cases 数组"], []
 
     seen_ids: set[str] = set()
     for i, case in enumerate(cases):
@@ -81,7 +88,28 @@ def audit(path: Path) -> list[str]:
         ):
             violations.append(f"{cid}: localize 格式非法（应为 {{surface: {sorted(LOCALIZE_SURFACES)}, detail: str}}）")
 
-    return violations
+        taxonomy = case.get("taxonomy")
+        if taxonomy is not None and (
+            not isinstance(taxonomy, list)
+            or not taxonomy
+            or not all(isinstance(c, str) and c in TAXONOMY for c in taxonomy)
+        ):
+            violations.append(
+                f"{cid}: taxonomy 非法（应为非空 code 数组，词表见 eval/failure_taxonomy.py，共 {len(TAXONOMY)} 码）"
+            )
+
+        review_needed = case.get("review_needed")
+        if review_needed is not None and not isinstance(review_needed, bool):
+            violations.append(f"{cid}: review_needed 须为 bool")
+        elif review_needed:
+            review_queue.append(cid)
+
+    return violations, review_queue
+
+
+def audit(path: Path) -> list[str]:
+    """仅返回违规清单（向后兼容签名；review 队列见 audit_full）"""
+    return audit_full(path)[0]
 
 
 def main() -> int:
@@ -89,7 +117,7 @@ def main() -> int:
     parser.add_argument("--path", type=Path, default=DEFAULT_PATH, help="登记表路径")
     args = parser.parse_args()
 
-    violations = audit(args.path)
+    violations, review_queue = audit_full(args.path)
     if violations:
         print(f"❌ bad case 登记表审计未通过（{len(violations)} 项违规）:")
         for v in violations:
@@ -97,6 +125,8 @@ def main() -> int:
         return 1
     n = len(json.loads(args.path.read_text(encoding="utf-8"))["bad_cases"])
     print(f"✅ bad case 登记表审计通过（{n} 条 case 全部合规）")
+    if review_queue:
+        print(f"👀 人工 review 队列（review_needed=true，共 {len(review_queue)} 条）: {', '.join(review_queue)}")
     return 0
 
 

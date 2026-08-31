@@ -1,5 +1,5 @@
 {
-  "_comment": "Bad Case 登记表 —— 评测驱动开发闭环的起点（bad case → candidate → qualification → regression → promotion）。每个坏例记录：问题 → 归因 → 修复 → 验证 → 状态。新发现坏例在此登记，对应修复必须过 qualify.py 门禁才可冻结。",
+  "_comment": "Bad Case 登记表 —— 评测驱动开发闭环的起点（bad case → candidate → qualification → regression → promotion）。每个坏例记录：问题 → 归因 → 修复 → 验证 → 状态。新发现坏例在此登记，对应修复必须过 qualify.py 门禁才可冻结。可选字段：taxonomy（根因码，词表见 eval/failure_taxonomy.py，audit_bad_cases.py 校验）；review_needed（true = 挂人工 review 队列：rules 与 LLM judge 分歧、高风险医疗 case、晋升 golden 前的确认）。status=closed 的历史条目统一补 taxonomy=false 的 review_needed，仅作枚举落地示范。",
   "bad_cases": [
     {
       "id": "bh_ood_02",
@@ -10,7 +10,9 @@
       "fix": "v2 ACCEPT 三元条件（relevant AND complete AND supported）+ grader unsupported 否决高相关",
       "verification": "bh_ood_02 dev 题 + ho_ood_02 holdout 题均拒答",
       "status": "closed",
-      "dev_case": "bh_ood_02"
+      "dev_case": "bh_ood_02",
+      "taxonomy": ["UNSUPPORTED_ACCEPT", "OOD_MISS"],
+      "review_needed": false
     },
     {
       "id": "bh_multi_01",
@@ -21,7 +23,9 @@
       "fix": "v2 引入 HopState + plan + completeness：结构信号命中 → 先生成 hop plan",
       "verification": "bh_multi_01 dev 题 DECOMPOSE→ACCEPT",
       "status": "closed",
-      "dev_case": "bh_multi_01"
+      "dev_case": "bh_multi_01",
+      "taxonomy": ["MISSING_HOP", "DECOMP_FAILURE"],
+      "review_needed": false
     },
     {
       "id": "bh_partial_01",
@@ -32,7 +36,9 @@
       "fix": "v2 missing-hop 检测 + targeted retrieve（13D）→ Final Rescue 1（V0 miss → v2 命中）",
       "verification": "bh_partial_01 dev 题 rescue=1；holdout ho_partial_01",
       "status": "closed",
-      "dev_case": "bh_partial_01"
+      "dev_case": "bh_partial_01",
+      "taxonomy": ["MISSING_HOP"],
+      "review_needed": false
     },
     {
       "id": "bh_easy_03_hard_02_03",
@@ -43,7 +49,9 @@
       "fix": "B1（2026-08-17）：_is_multi_part 收敛为仅多问号；对比/并列移入 _is_comparison → 交 LLM grader 裁决",
       "verification": "test_is_multi_part / test_is_comparison 单测 + holdout 30 题",
       "status": "closed",
-      "dev_case": "bh_easy_03 bh_hard_02 bh_hard_03"
+      "dev_case": "bh_easy_03 bh_hard_02 bh_hard_03",
+      "taxonomy": ["POLICY_MISMATCH"],
+      "review_needed": false
     },
     {
       "id": "ood_overlap_false_negative",
@@ -54,7 +62,9 @@
       "fix": "v1 滑动窗口 3-4 字 + 通用词表（_GENERIC_TERMS）",
       "verification": "OOD 误判 4 题 → 0（step10 记录）；OOD 16/16、库内误拒 0/56",
       "status": "closed",
-      "dev_case": ""
+      "dev_case": "",
+      "taxonomy": ["OOD_MISS"],
+      "review_needed": false
     },
     {
       "id": "ho_hard_01_gold_error",
@@ -65,7 +75,9 @@
       "fix": "标注修正：gold → 08_AI模型评估与验证报告_small_2",
       "verification": "修正后 ER=1.00，答案含 '敏感度下降8.5%'",
       "status": "closed",
-      "dev_case": "ho_hard_01 (holdout)"
+      "dev_case": "ho_hard_01 (holdout)",
+      "taxonomy": ["GOLD_ANNOTATION_ERROR"],
+      "review_needed": false
     },
     {
       "id": "final_answer_false_negative",
@@ -76,7 +88,9 @@
       "fix": "指标修复：解包 JSON（diagnosis + evidence）+ 空白归一化；gold 标注改为关键事实短串",
       "verification": "30 题 Final Answer Acc 14/30 → 26/26（可答题）",
       "status": "closed",
-      "dev_case": ""
+      "dev_case": "",
+      "taxonomy": ["GOLD_ANNOTATION_ERROR"],
+      "review_needed": false
     },
     {
       "id": "v1_no_decompose",
@@ -87,7 +101,9 @@
       "fix": "v2 结构信号（多问号）直接触发 DECOMPOSE + structured plan",
       "verification": "Decomp Success 0 → 4（16 题）→ 7（30 题）",
       "status": "closed",
-      "dev_case": "bh_multi_01 bh_comp_01 bh_comp_02 bh_partial_01"
+      "dev_case": "bh_multi_01 bh_comp_01 bh_comp_02 bh_partial_01",
+      "taxonomy": ["DECOMP_FAILURE"],
+      "review_needed": false
     },
     {
       "id": "rerank_cap_truncation_bug",
@@ -98,7 +114,9 @@
       "fix": "_assign_to_hops / _select_final_evidence 截断改为按 _rrf_score 降序取 RERANK_CAP；_accumulate 刷新已有 chunk 的 score/_rrf_score（hop 检索把 chunk 从低相关捞到高相关时旧分误导截断）；新增单测 test_assign_to_hops_rrf_cap_keeps_late_evidence",
       "verification": "qualify --full 重跑（修复后 bh_multi_01 DECOMPOSE→ACCEPT ER=1.00，bad case 子集可答题 ER=1.000，门禁 PASS）",
       "status": "closed",
-      "dev_case": "bh_multi_01"
+      "dev_case": "bh_multi_01",
+      "taxonomy": ["RERANK_DROP"],
+      "review_needed": false
     },
     {
       "id": "dev_gold_misalignment",
@@ -109,7 +127,9 @@
       "fix": "gold 修正：bh_hard_02 / bh_constraint_01 → 02_CT影像肺结节检测技术方案_small_2；bh_constraint_02 → 诊断流程指南：从怀疑到确诊_small_2；新增批量验证脚本方法（final_answer 关键词 × gold 集合覆盖）",
       "verification": "qualify --full 重跑：bad case 子集可答题 ER 0.786 → 1.000",
       "status": "closed",
-      "dev_case": "bh_hard_02 bh_constraint_01 bh_constraint_02"
+      "dev_case": "bh_hard_02 bh_constraint_01 bh_constraint_02",
+      "taxonomy": ["GOLD_ANNOTATION_ERROR"],
+      "review_needed": false
     }
   ]
 }

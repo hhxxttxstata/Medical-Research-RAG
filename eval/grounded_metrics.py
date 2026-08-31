@@ -89,6 +89,7 @@ class GroundedCase:
     completeness: float = 0.0
     citation_valid: bool = True
     mode: str = "llm"  # llm / rule
+    judge_raw: str = ""  # judge 原始输出留档（P1-6 分歧复盘）
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -103,6 +104,7 @@ class GroundedCase:
             "completeness": self.completeness,
             "citation_valid": self.citation_valid,
             "mode": self.mode,
+            "judge_raw": self.judge_raw[:2000],
         }
 
     # ── 派生指标 ──
@@ -159,11 +161,13 @@ def judge_claims(
     answer: str,
     sources: list[dict[str, Any]],
     generator=None,
-) -> tuple[list[ClaimResult], str]:
+) -> tuple[list[ClaimResult], str, str]:
     """LLM-as-Judge 判定回答中的 claims 是否被证据支撑
 
     Returns:
-        (claims, mode)  mode ∈ {"llm", "rule"}
+        (claims, mode, judge_raw)  mode ∈ {"llm", "rule"}
+        judge_raw 为 judge 原始输出（截断留档，供 rules vs LLM 分歧复盘，
+        P1-6）；规则降级时为空。
     """
     if generator is not None and answer and not answer.startswith("[OPERATIONAL_ERROR]"):
         try:
@@ -177,10 +181,10 @@ def judge_claims(
             )
             claims = _parse_claims_response(raw)
             if claims is not None:
-                return claims, "llm"
+                return claims, "llm", raw
         except Exception:
             pass
-    return _rule_based_claims(question, answer, sources), "rule"
+    return _rule_based_claims(question, answer, sources), "rule", ""
 
 
 def _rule_based_claims(question: str, answer: str, sources: list[dict[str, Any]]) -> list[ClaimResult]:
@@ -286,7 +290,7 @@ def compute_grounded_metrics(
 
         # 2. Claim 级 grounded 判定（LLM → 规则降级）
         if not abstained and answer and not answer.startswith("[OPERATIONAL_ERROR]"):
-            case.claims, case.mode = judge_claims(q.get("question", ""), answer, sources, generator)
+            case.claims, case.mode, case.judge_raw = judge_claims(q.get("question", ""), answer, sources, generator)
 
         # 3. Evidence / Citation Support
         all_gold = set()

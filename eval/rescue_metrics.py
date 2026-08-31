@@ -264,6 +264,74 @@ def decomposition_success(route: list[str], hit: bool) -> bool:
     return "DECOMPOSE" in route and route[-1] == "ACCEPT" and hit
 
 
+# ══════════════════════════════════════════════════
+#  Step 17: Trajectory / Decision 轻量指标（P0-5 / P1-3）
+#  全部确定性计算（route + expected_route），不进 LLM。
+#  trajectory_mode 支持：仅 ordered_subsequence（现有口径，缺省值）；
+#  条目声明其它 mode 时按缺省口径判定并在 details 里保留原值供复盘。
+# ══════════════════════════════════════════════════
+
+
+def required_action_recall(route: list[str], expected_route: list[str]) -> float | None:
+    """Required Action Recall：必备循环内动作（RETRIEVE/DECOMPOSE）实际出现的比例
+
+    expected_route 无必备动作 → None（不判，不计入分母）。
+    """
+    required = [a for a in expected_route if a in ("RETRIEVE", "DECOMPOSE")]
+    if not required:
+        return None
+    hit = sum(1 for a in set(required) if a in route)
+    return hit / len(set(required))
+
+
+def forbidden_action_violation(route: list[str], forbidden_actions: list[str] | None) -> bool | None:
+    """Forbidden Action：route 出现任一声明 forbidden 的动作 → True
+
+    条目未声明 forbidden_actions → None（不判，不计入分母）。
+    """
+    if not forbidden_actions:
+        return None
+    return any(a in route for a in forbidden_actions)
+
+
+def false_accept(route: list[str], expected_route: list[str]) -> bool | None:
+    """False Accept：应拒（expected 终局 ABSTAIN）却最终 ACCEPT
+
+    expected_route 为空 → None（无从判定）。
+    """
+    if not expected_route:
+        return None
+    return route[-1] == "ACCEPT" and expected_route[-1] == "ABSTAIN"
+
+
+def premature_accept(route: list[str], expected_route: list[str]) -> bool | None:
+    """Premature Accept：期望包含检索/拆解动作却未执行任何动作即 ACCEPT
+
+    未 ACCEPT（无 premature 可言）或 expected 无必备动作 → None（不进分母）。
+    """
+    required = [a for a in expected_route if a in ("RETRIEVE", "DECOMPOSE")]
+    if not required or not route or route[-1] != "ACCEPT":
+        return None
+    return not any(a in route for a in ("RETRIEVE", "DECOMPOSE"))
+
+
+def per_action_pr(route: list[str], expected_route: list[str]) -> dict[str, dict[str, int]]:
+    """按动作类型的 presence-based 混淆矩阵（TP/FP/FN）
+
+    对每个动作 A：pred = A in route，actual = A in expected_route。
+    聚合层把各题 TP/FP/FN 求和后算 micro P/R（见 compute_agent_capability_metrics）。
+    """
+    out: dict[str, dict[str, int]] = {}
+    for a in ("RETRIEVE", "DECOMPOSE", "ACCEPT", "ABSTAIN"):
+        pred, actual = a in route, a in expected_route
+        out[a] = {
+            "tp": int(pred and actual),
+            "fp": int(pred and not actual),
+            "fn": int(not pred and actual),
+        }
+    return out
+
+
 def compute_agent_capability_metrics(cases: list[dict], k: int = TOP_K) -> dict[str, Any]:
     """Step 12 完整指标族汇总
 
@@ -297,6 +365,16 @@ def compute_agent_capability_metrics(cases: list[dict], k: int = TOP_K) -> dict[
         "retry_recovery": 0,
         "unnecessary_actions": 0,
         "avg_iterations": 0.0,
+        # trajectory / decision（P0-5 / P1-3）
+        "required_action_recall_sum": 0.0,
+        "required_action_n": 0,
+        "forbidden_violations": 0,
+        "forbidden_declared": 0,
+        "false_accepts": 0,
+        "false_accept_n": 0,
+        "premature_accepts": 0,
+        "premature_accept_n": 0,
+        "per_action": {a: {"tp": 0, "fp": 0, "fn": 0} for a in ("RETRIEVE", "DECOMPOSE", "ACCEPT", "ABSTAIN")},
         "by_type": {},
     }
     details = []
@@ -348,11 +426,34 @@ def compute_agent_capability_metrics(cases: list[dict], k: int = TOP_K) -> dict[
                 agg["false_abstain"] += 1
 
         # Policy 行为
-        agg["policy_action_accuracy"] += policy_action_accuracy(route, q.get("expected_route", []))
+        expected_route = q.get("expected_route", [])
+        agg["policy_action_accuracy"] += policy_action_accuracy(route, expected_route)
         agg["decomposition_success"] += decomposition_success(route, v1_hit)
         agg["retry_recovery"] += retry_recovery(route, v1_hit)
         agg["unnecessary_actions"] += unnecessary_action_rate(route, qtype)
         agg["avg_iterations"] += len(route) - 1
+
+        # Trajectory / Decision 轻量指标（缺省字段不判、不进分母）
+        rar = required_action_recall(route, expected_route)
+        if rar is not None:
+            agg["required_action_recall_sum"] += rar
+            agg["required_action_n"] += 1
+        fav = forbidden_action_violation(route, q.get("forbidden_actions"))
+        if fav is not None:
+            agg["forbidden_declared"] += 1
+            agg["forbidden_violations"] += fav
+        fa_acc = false_accept(route, expected_route)
+        if fa_acc is not None:
+            agg["false_accept_n"] += 1
+            agg["false_accepts"] += fa_acc
+        pa = premature_accept(route, expected_route)
+        if pa is not None:
+            agg["premature_accept_n"] += 1
+            agg["premature_accepts"] += pa
+        papr = per_action_pr(route, expected_route)
+        for a, counts in papr.items():
+            for kk, vv in counts.items():
+                agg["per_action"][a][kk] += vv
 
         # 分类型统计
         agg["by_type"].setdefault(qtype, {"n": 0, "rescue": 0, "hit": 0, "false_abstain": 0})
@@ -374,6 +475,12 @@ def compute_agent_capability_metrics(cases: list[dict], k: int = TOP_K) -> dict[
                 "completeness": round(comp, 3),
                 "final_answer_accuracy": fa,
                 "route": route,
+                "expected_route": expected_route,
+                "trajectory_mode": q.get("trajectory_mode", "ordered_subsequence"),
+                "required_action_recall": round(rar, 3) if rar is not None else None,
+                "forbidden_violation": fav,
+                "false_accept": fa_acc,
+                "premature_accept": pa,
                 "abstained": abstained,
                 "class": classify_pair(v0_hit, v1_hit)
                 if has_gold
@@ -383,6 +490,12 @@ def compute_agent_capability_metrics(cases: list[dict], k: int = TOP_K) -> dict[
 
     n_ans = max(agg["answerable_total"], 1)
     n_ood = max(agg["ood_total"], 1)
+
+    def _micro(a: str, counts: str) -> float | None:
+        c = agg["per_action"][a]
+        denom = c["tp"] + c["fp"] if counts == "p" else c["tp"] + c["fn"]
+        return round(c["tp"] / denom, 3) if denom else None
+
     return {
         "n": n,
         "final_answer_accuracy": f"{agg['final_answer_accuracy']}/{n}",
@@ -399,6 +512,14 @@ def compute_agent_capability_metrics(cases: list[dict], k: int = TOP_K) -> dict[
         "retry_recovery": agg["retry_recovery"],
         "unnecessary_action_rate": f"{agg['unnecessary_actions']}/{agg['answerable_total']}",
         "avg_iterations": round(agg["avg_iterations"] / n, 2),
+        "required_action_recall": round(agg["required_action_recall_sum"] / agg["required_action_n"], 3)
+        if agg["required_action_n"]
+        else None,
+        "forbidden_action_rate": f"{agg['forbidden_violations']}/{agg['forbidden_declared']}",
+        "false_accept_rate": f"{agg['false_accepts']}/{agg['false_accept_n']}",
+        "premature_accept_rate": f"{agg['premature_accepts']}/{agg['premature_accept_n']}",
+        "per_action_precision": {a: _micro(a, "p") for a in agg["per_action"]},
+        "per_action_recall": {a: _micro(a, "r") for a in agg["per_action"]},
         "by_type": agg["by_type"],
         "details": details,
     }
