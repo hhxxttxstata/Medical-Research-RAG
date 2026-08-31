@@ -66,6 +66,8 @@ jobs:
           cache: pip
       - name: Audit bad cases registry（①收集：登记表 schema 校验）
         run: python scripts/audit_bad_cases.py
+      - name: Audit datasets（六数据集 schema + 交叉引用，纯文件校验；CI 无索引时 gold 交叉校验自动降级）
+        run: python scripts/audit_datasets.py
       - name: Install dependencies
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
